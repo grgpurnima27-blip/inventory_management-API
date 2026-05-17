@@ -1,6 +1,18 @@
 from django.contrib import admin
 
-# Register your models here.
 from .models import Inventory
 
-admin.site.register(Inventory)
+
+@admin.register(Inventory)
+class InventoryAdmin(admin.ModelAdmin):
+
+    list_display = [
+        'id',
+        'product',
+        'warehouse',
+        'quantity',
+    ]
+
+    list_filter = [
+        'warehouse',
+    ]

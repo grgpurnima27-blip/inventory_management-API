@@ -1,6 +1,18 @@
 from django.contrib import admin
 
-# Register your models here.
 from .models import Warehouse
 
-admin.site.register(Warehouse)
+
+@admin.register(Warehouse)
+class WarehouseAdmin(admin.ModelAdmin):
+
+    list_display = [
+        'id',
+        'name',
+        'location',
+    ]
+
+    search_fields = [
+        'name',
+        'location',
+    ]
