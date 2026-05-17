@@ -3,7 +3,7 @@ from .models import Inventory
 
 class InventorySerializer(serializers.ModelSerializer):
     product_name= serializers.CharField(
-        source='product_name',
+        source='product.name',
         read_only=True
     )
     warehouse_name= serializers.CharField(
