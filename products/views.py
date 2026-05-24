@@ -1,6 +1,7 @@
 from rest_framework import viewsets
 from rest_framework import filters
 from config.permissions import IsAdminOrReadOnly
+from rest_framework.permissions import AllowAny
 
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.permissions import (
@@ -17,8 +18,6 @@ class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all()
 
     serializer_class = ProductSerializer
-
-    permission_classes= [IsAdminOrReadOnly]
 
     filter_backends = [
 
@@ -48,4 +47,4 @@ class ProductViewSet(viewsets.ModelViewSet):
 
             return [AllowAny()]
 
-        return [IsAdminUser()]
+        return [IsAdminOrReadOnly()]  

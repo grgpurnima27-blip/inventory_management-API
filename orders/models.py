@@ -1,7 +1,5 @@
 from django.db import models
-
-from django.contrib.auth.models import User
-
+from django.conf import settings
 from django.core.exceptions import ValidationError
 
 from products.models import Product
@@ -15,16 +13,13 @@ class Order(models.Model):
     STATUS_CANCELLED = 'cancelled'
 
     STATUS_CHOICES = [
-
         (STATUS_PENDING, 'Pending'),
-
         (STATUS_COMPLETED, 'Completed'),
-
         (STATUS_CANCELLED, 'Cancelled'),
     ]
 
     user = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,  # ← FIXED (was User)
         on_delete=models.CASCADE,
         related_name='orders'
     )
@@ -50,27 +45,20 @@ class Order(models.Model):
     )
 
     class Meta:
-
         ordering = ['-created_at']
 
     def clean(self):
-
         if len(self.customer_name.strip()) < 3:
-
             raise ValidationError({
-
                 'customer_name':
                 'Customer name must contain at least 3 characters.'
             })
 
     def save(self, *args, **kwargs):
-
         self.full_clean()
-
         super().save(*args, **kwargs)
 
     def __str__(self):
-
         return (
             f'Order #{self.id} - '
             f'{self.customer_name}'
@@ -103,27 +91,20 @@ class OrderItem(models.Model):
     )
 
     class Meta:
-
         ordering = ['id']
 
     def clean(self):
-
         if self.quantity <= 0:
-
             raise ValidationError({
-
                 'quantity':
                 'Quantity must be greater than zero.'
             })
 
     def save(self, *args, **kwargs):
-
         self.full_clean()
-
         super().save(*args, **kwargs)
 
     def __str__(self):
-
         return (
             f'Order #{self.order.id} - '
             f'{self.product.name}'
