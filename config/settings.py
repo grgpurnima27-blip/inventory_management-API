@@ -43,6 +43,8 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'django_filters',
     'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist', 
+    'corsheaders',
 
     # Local Apps
     'products',
@@ -55,6 +57,7 @@ INSTALLED_APPS = [
 
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware', 
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -64,6 +67,13 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",     # if they use React
+    "http://localhost:5173",     # if they use Vite
+    "http://127.0.0.1:5500",    # if they use Live Server
+]
+
+CORS_ALLOW_ALL_ORIGINS = True
 
 ROOT_URLCONF = 'config.urls'
 
@@ -163,21 +173,30 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
+
 SPECTACULAR_SETTINGS = {
-
     'TITLE': 'Inventory Management API',
-
     'DESCRIPTION': 'Professional Inventory & Order Management API',
-
     'VERSION': '1.0.0',
-
     'SERVE_INCLUDE_SCHEMA': False,
-
     'SWAGGER_UI_SETTINGS': {
-
         'deepLinking': True,
+        'persistAuthorization': True,  #  keeps token after page refresh
+    },
+
+    # this is what makes the Authorize button work
+    'SECURITY': [{'bearerAuth': []}],
+    'COMPONENTS': {
+        'securitySchemes': {
+            'bearerAuth': {
+                'type': 'http',
+                'scheme': 'bearer',
+                'bearerFormat': 'JWT',
+            }
+        }
     },
 }
+
 
 CACHES = {
     "default": {
@@ -185,3 +204,14 @@ CACHES = {
         "LOCATION": "unique-inventory-cache"
     }
 }
+
+# SWAGGER_SETTINGS = {
+#     'SECURITY_DEFINITIONS': {
+#         'Bearer': {
+#             'type': 'apiKey',
+#             'name': 'Authorization',
+#             'in': 'header',
+#         }
+#     },
+#     'USE_SESSION_AUTH': False,
+# }
