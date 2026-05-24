@@ -1,10 +1,12 @@
 from django.db import transaction
 
 from rest_framework import viewsets
-from rest_framework import status
 
 from rest_framework.decorators import action
+
 from rest_framework.response import Response
+
+from rest_framework.permissions import IsAuthenticated
 
 from .models import Order
 
@@ -15,35 +17,44 @@ from inventory.models import Inventory
 
 class OrderViewSet(viewsets.ModelViewSet):
 
-    queryset = Order.objects.prefetch_related(
-        'items__product',
-        'items__warehouse'
-    )
-
     serializer_class = OrderSerializer
 
-    http_method_names = ['get', 'post']
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+
+        return Order.objects.filter(
+
+            user=self.request.user
+
+        ).prefetch_related(
+
+            'items',
+            'items__product',
+            'items__warehouse'
+        )
 
     @transaction.atomic
     @action(detail=True, methods=['post'])
+
     def cancel(self, request, pk=None):
 
         order = self.get_object()
 
         if order.status == Order.STATUS_CANCELLED:
 
-            return Response(
-                {
-                    'error':
-                    'Order already cancelled.'
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({
+
+                'message':
+                'Order already cancelled.'
+            })
 
         for item in order.items.all():
 
             inventory = Inventory.objects.select_for_update().get(
+
                 product=item.product,
+
                 warehouse=item.warehouse
             )
 
@@ -55,10 +66,8 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         order.save()
 
-        return Response(
-            {
-                'message':
-                'Order cancelled successfully and inventory restored.'
-            },
-            status=status.HTTP_200_OK
-        )
+        return Response({
+
+            'message':
+            'Order cancelled successfully.'
+        })

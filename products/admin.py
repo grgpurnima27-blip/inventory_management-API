@@ -11,11 +11,21 @@ class ProductAdmin(admin.ModelAdmin):
         'name',
         'sku',
         'category',
-        'price'
+        'price',
+        'created_at',
     ]
 
     search_fields = [
         'name',
         'sku',
-        'category'
+        'category',
+    ]
+
+    list_filter = [
+        'category',
+        'created_at',
+    ]
+
+    ordering = [
+        '-created_at',
     ]
