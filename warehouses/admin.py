@@ -9,10 +9,14 @@ class WarehouseAdmin(admin.ModelAdmin):
     list_display = [
         'id',
         'name',
-        'location'
+        'location',
     ]
 
     search_fields = [
         'name',
-        'location'
+        'location',
+    ]
+
+    ordering = [
+        'name',
     ]

@@ -1,7 +1,10 @@
 from django_filters.rest_framework import DjangoFilterBackend
 
 from rest_framework import viewsets
-from rest_framework.filters import OrderingFilter
+
+from config.permissions import IsAdminOrReadOnly
+
+from rest_framework import filters
 
 from .models import Inventory
 from .serializers import InventorySerializer
@@ -16,22 +19,25 @@ class InventoryViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = InventorySerializer
 
+    permission_classes = [IsAdminOrReadOnly]
+
     filter_backends = [
+
         DjangoFilterBackend,
-        OrderingFilter
+
+        filters.OrderingFilter,
     ]
 
     filterset_fields = [
+
         'product',
         'warehouse',
     ]
 
     ordering_fields = [
-        'quantity',
-        'created_at'
-    ]
 
-    ordering = ['quantity']
+        'quantity',
+    ]
 
     def get_queryset(self):
 
@@ -41,21 +47,10 @@ class InventoryViewSet(viewsets.ReadOnlyModelViewSet):
             'low_stock'
         )
 
-        out_of_stock = self.request.query_params.get(
-            'out_of_stock'
-        )
-
         if low_stock == 'true':
 
             queryset = queryset.filter(
-                quantity__lt=5,
-                quantity__gt=0
-            )
-
-        if out_of_stock == 'true':
-
-            queryset = queryset.filter(
-                quantity=0
+                quantity__lt=5
             )
 
         return queryset

@@ -16,8 +16,7 @@ Including another URLconf
 """
 from django.contrib import admin
 
-from django.urls import path
-from django.urls import include
+from django.urls import path, include
 
 from rest_framework.routers import DefaultRouter
 
@@ -26,54 +25,72 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+)
+
 from products.views import ProductViewSet
 from warehouses.views import WarehouseViewSet
 from inventory.views import InventoryViewSet
 from orders.views import OrderViewSet
-
-from reports.views import InventorySummaryView
+from reports.views import InventorySummaryAPIView
 
 
 router = DefaultRouter()
 
 router.register(
-    r'products',
-    ProductViewSet
+    'products',
+    ProductViewSet,
+    basename='products'
 )
 
 router.register(
-    r'warehouses',
-    WarehouseViewSet
+    'warehouses',
+    WarehouseViewSet,
+    basename='warehouses'
 )
 
 router.register(
-    r'inventory',
+    'inventory',
     InventoryViewSet,
     basename='inventory'
 )
 
 router.register(
-    r'orders',
-    OrderViewSet
+    'orders',
+    OrderViewSet,
+    basename='orders'
 )
 
 
 urlpatterns = [
 
-    path(
-        'admin/',
-        admin.site.urls
-    ),
+    path('admin/', admin.site.urls),
 
-    path(
-        'api/',
-        include(router.urls)
-    ),
+    path('api/', include(router.urls)),
 
     path(
         'api/reports/inventory-summary/',
-        InventorySummaryView.as_view(),
+        InventorySummaryAPIView.as_view(),
         name='inventory-summary'
+    ),
+
+    path(
+        'api/auth/register/',
+        include('accounts.urls')
+    ),
+
+    path(
+        'api/token/',
+        TokenObtainPairView.as_view(),
+        name='token_obtain_pair'
+    ),
+
+    path(
+        'api/token/refresh/',
+        TokenRefreshView.as_view(),
+        name='token_refresh'
     ),
 
     path(
