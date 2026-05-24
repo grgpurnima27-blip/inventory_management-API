@@ -1,4 +1,5 @@
 from django.db import models
+from django.core.exceptions import ValidationError
 
 from products.models import Product
 from warehouses.models import Warehouse
@@ -18,9 +19,16 @@ class Inventory(models.Model):
         related_name='inventories'
     )
 
-    quantity = models.PositiveIntegerField(default=0)
+    quantity = models.PositiveIntegerField(
+        default=0
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
 
     class Meta:
+
         constraints = [
             models.UniqueConstraint(
                 fields=['product', 'warehouse'],
@@ -28,6 +36,26 @@ class Inventory(models.Model):
             )
         ]
 
+        ordering = ['product__name']
+
+    def clean(self):
+
+        if self.quantity < 0:
+
+            raise ValidationError({
+                'quantity':
+                'Quantity cannot be negative.'
+            })
+
+    def save(self, *args, **kwargs):
+
+        self.full_clean()
+
+        super().save(*args, **kwargs)
+
     def __str__(self):
-        return f"{self.product.name} - {self.warehouse.name}"
-    
+
+        return (
+            f'{self.product.name} - '
+            f'{self.warehouse.name}'
+        )

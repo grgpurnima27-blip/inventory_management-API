@@ -2,39 +2,30 @@ from django.db import transaction
 
 from rest_framework import serializers
 
-from .models import Order, OrderItem
+from .models import Order
+from .models import OrderItem
+
 from inventory.models import Inventory
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
 
-    product_name = serializers.CharField(
-        source='product.name',
-        read_only=True
-    )
-
-    warehouse_name = serializers.CharField(
-        source='warehouse.name',
-        read_only=True
-    )
-
     class Meta:
         model = OrderItem
-
         fields = [
-            'id',
             'product',
-            'product_name',
             'warehouse',
-            'warehouse_name',
-            'quantity',
-            'unit_price',
+            'quantity'
         ]
 
-        read_only_fields = [
-            'id',
-            'unit_price',
-        ]
+    def validate_quantity(self, value):
+
+        if value <= 0:
+            raise serializers.ValidationError(
+                'Quantity must be greater than zero.'
+            )
+
+        return value
 
 
 class OrderSerializer(serializers.ModelSerializer):
@@ -43,20 +34,30 @@ class OrderSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Order
-
         fields = [
             'id',
             'customer_name',
             'status',
             'created_at',
-            'items',
+            'items'
         ]
 
         read_only_fields = [
             'id',
             'status',
-            'created_at',
+            'created_at'
         ]
+
+    def validate_customer_name(self, value):
+
+        value = value.strip()
+
+        if len(value) < 3:
+            raise serializers.ValidationError(
+                'Customer name must contain at least 3 characters.'
+            )
+
+        return value
 
     @transaction.atomic
     def create(self, validated_data):
@@ -82,16 +83,17 @@ class OrderSerializer(serializers.ModelSerializer):
 
             except Inventory.DoesNotExist:
 
-                raise serializers.ValidationError(
-                    f"Inventory does not exist for {product.name}"
-                )
+                raise serializers.ValidationError({
+                    'inventory':
+                    f'No inventory found for {product.name} in selected warehouse.'
+                })
 
             if inventory.quantity < quantity:
 
-                raise serializers.ValidationError(
-                    f"Not enough stock for {product.name}. "
-                    f"Available stock: {inventory.quantity}"
-                )
+                raise serializers.ValidationError({
+                    'stock':
+                    f'Insufficient stock for {product.name}. Available stock is {inventory.quantity}.'
+                })
 
             inventory.quantity -= quantity
 
@@ -104,5 +106,9 @@ class OrderSerializer(serializers.ModelSerializer):
                 quantity=quantity,
                 unit_price=product.price
             )
+
+        order.status = Order.STATUS_COMPLETED
+
+        order.save()
 
         return order
