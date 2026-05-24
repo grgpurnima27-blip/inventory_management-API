@@ -15,24 +15,66 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path, include
+
+from django.urls import path
+from django.urls import include
+
+from rest_framework.routers import DefaultRouter
 
 from drf_spectacular.views import (
     SpectacularAPIView,
     SpectacularSwaggerView,
 )
 
+from products.views import ProductViewSet
+from warehouses.views import WarehouseViewSet
+from inventory.views import InventoryViewSet
+from orders.views import OrderViewSet
+
+from reports.views import InventorySummaryView
+
+
+router = DefaultRouter()
+
+router.register(
+    r'products',
+    ProductViewSet
+)
+
+router.register(
+    r'warehouses',
+    WarehouseViewSet
+)
+
+router.register(
+    r'inventory',
+    InventoryViewSet,
+    basename='inventory'
+)
+
+router.register(
+    r'orders',
+    OrderViewSet
+)
+
+
 urlpatterns = [
 
-    path('admin/', admin.site.urls),
+    path(
+        'admin/',
+        admin.site.urls
+    ),
 
-    path('api/products/', include('products.urls')),
+    path(
+        'api/',
+        include(router.urls)
+    ),
 
-    path('api/warehouses/', include('warehouses.urls')),
-
-    path('api/inventory/', include('inventory.urls')),
-
-    path('api/orders/', include('orders.urls')),
+    path(
+        'api/reports/inventory-summary/',
+        InventorySummaryView.as_view(),
+        name='inventory-summary'
+    ),
 
     path(
         'api/schema/',
@@ -41,11 +83,10 @@ urlpatterns = [
     ),
 
     path(
-        'api/docs/',
+        'swagger/',
         SpectacularSwaggerView.as_view(
             url_name='schema'
         ),
         name='swagger-ui'
     ),
-    path('api/reports/', include('reports.urls')),
 ]

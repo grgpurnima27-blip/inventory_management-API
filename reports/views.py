@@ -1,6 +1,3 @@
-from django.shortcuts import render
-
-# Create your views here.
 from django.db.models import Sum
 
 from rest_framework.views import APIView
@@ -21,19 +18,16 @@ class InventorySummaryView(APIView):
         )['total'] or 0
 
         low_stock_products = Inventory.objects.filter(
-            quantity__lt=5,
-            quantity__gt=0
+            quantity__lt=5
         ).count()
 
         out_of_stock_products = Inventory.objects.filter(
             quantity=0
         ).count()
 
-        data = {
+        return Response({
             'total_products': total_products,
             'total_inventory': total_inventory,
             'low_stock_products': low_stock_products,
-            'out_of_stock_products': out_of_stock_products,
-        }
-
-        return Response(data)
+            'out_of_stock_products': out_of_stock_products
+        })

@@ -10,9 +10,9 @@ class InventoryAdmin(admin.ModelAdmin):
         'id',
         'product',
         'warehouse',
-        'quantity',
+        'quantity'
     ]
 
     list_filter = [
-        'warehouse',
+        'warehouse'
     ]
