@@ -26,6 +26,13 @@ class Inventory(models.Model):
     created_at = models.DateTimeField(
         auto_now_add=True
     )
+    constraints = [
+    models.UniqueConstraint(
+        fields=['product', 'warehouse'],
+        name='unique_product_warehouse'
+    )
+]
+
 
     class Meta:
 

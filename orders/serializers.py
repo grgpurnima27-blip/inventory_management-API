@@ -112,10 +112,15 @@ class OrderSerializer(serializers.ModelSerializer):
 
         items_data = validated_data.pop('create_items')
 
+        # Prevent duplicate user error
+        validated_data.pop('user', None)
+
         user = self.context['request'].user
 
+        # Create order as pending initially
         order = Order.objects.create(
             user=user,
+            status=Order.STATUS_PENDING,
             **validated_data
         )
 
@@ -138,7 +143,10 @@ class OrderSerializer(serializers.ModelSerializer):
 
                 raise serializers.ValidationError({
                     'inventory':
-                    f'{product.name} does not exist in {warehouse.name}.'
+                    (
+                        f'{product.name} does not exist '
+                        f'in {warehouse.name}.'
+                    )
                 })
 
             if inventory.quantity < quantity:
@@ -151,6 +159,7 @@ class OrderSerializer(serializers.ModelSerializer):
                     )
                 })
 
+            # Deduct inventory
             inventory.quantity -= quantity
             inventory.save()
 
@@ -166,8 +175,15 @@ class OrderSerializer(serializers.ModelSerializer):
 
             total_price += unit_price * quantity
 
+        # Update order after successful completion
         order.total_price = total_price
         order.status = Order.STATUS_COMPLETED
-        order.save()
+
+        order.save(
+            update_fields=[
+                'total_price',
+                'status',
+            ]
+        )
 
         return order

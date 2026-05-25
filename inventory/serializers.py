@@ -46,6 +46,33 @@ class InventorySerializer(serializers.ModelSerializer):
 
         return value
 
+    def validate(self, attrs):
+
+        product = attrs.get('product')
+        warehouse = attrs.get('warehouse')
+
+        queryset = Inventory.objects.filter(
+            product=product,
+            warehouse=warehouse
+        )
+
+        # Ignore current object during update
+        if self.instance:
+            queryset = queryset.exclude(id=self.instance.id)
+
+        if queryset.exists():
+
+            raise serializers.ValidationError({
+                'inventory':
+                (
+                    f'{product.name} already exists '
+                    f'in {warehouse.name}. '
+                    f'Please update the existing inventory instead.'
+                )
+            })
+
+        return attrs
+
     def get_stock_status(self, obj):
 
         if obj.quantity == 0:
