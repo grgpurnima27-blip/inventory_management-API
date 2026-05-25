@@ -19,7 +19,7 @@ class Order(models.Model):
     ]
 
     user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,  # ← FIXED (was User)
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name='orders'
     )
@@ -31,7 +31,7 @@ class Order(models.Model):
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
-        default=STATUS_PENDING
+        default=STATUS_PENDING  # ← starts as pending
     )
 
     total_price = models.DecimalField(
@@ -42,6 +42,10 @@ class Order(models.Model):
 
     created_at = models.DateTimeField(
         auto_now_add=True
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True  # ← updates every time order is saved
     )
 
     class Meta:
@@ -61,7 +65,8 @@ class Order(models.Model):
     def __str__(self):
         return (
             f'Order #{self.id} - '
-            f'{self.customer_name}'
+            f'{self.customer_name} - '
+            f'{self.status}'
         )
 
 
@@ -107,5 +112,6 @@ class OrderItem(models.Model):
     def __str__(self):
         return (
             f'Order #{self.order.id} - '
-            f'{self.product.name}'
+            f'{self.product.name} x '
+            f'{self.quantity}'
         )

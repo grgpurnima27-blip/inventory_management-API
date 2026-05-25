@@ -1,68 +1,59 @@
 from django.db import transaction
 
-from rest_framework import viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
 
-from config.permissions import IsAdminOrReadOnly
-
+from config.permissions import IsAuthenticatedCustomer, IsOwnerOrAdmin
+from inventory.models import Inventory
 from .models import Order
 from .serializers import OrderSerializer
-from inventory.models import Inventory
 
 
 class OrderViewSet(viewsets.ModelViewSet):
 
     serializer_class = OrderSerializer
 
-    permission_classes = [IsAuthenticated]
+    # TOKEN REQUIRED — customers and admins
+    permission_classes = [IsAuthenticatedCustomer]
 
-    def get_permissions(self):
-        # Admins can see and manage all orders
-        # Customers can only create and view their own orders
-        # But both must be authenticated
-        return [IsAuthenticated()]
+    queryset = Order.objects.select_related(
+        'user'
+    ).prefetch_related(
+        'items',
+        'items__product',
+        'items__warehouse',
+    )
 
     def get_queryset(self):
         user = self.request.user
 
-        # Admins see ALL orders
-        if hasattr(user, 'role') and user.role == 'admin':
-            return Order.objects.all().prefetch_related(
-                'items',
-                'items__product',
-                'items__warehouse'
-            )
+        # Admin sees ALL orders
+        if user.role == 'admin':
+            return self.queryset
 
-        # Customers only see THEIR OWN orders
-        return Order.objects.filter(
-            user=user
-        ).prefetch_related(
-            'items',
-            'items__product',
-            'items__warehouse'
-        )
+        # Customer sees only THEIR orders
+        return self.queryset.filter(user=user)
 
     def perform_create(self, serializer):
-        # Automatically assign logged in user as order owner
+        # Auto assign logged in user to order
         serializer.save(user=self.request.user)
 
     def update(self, request, *args, **kwargs):
-        # Only admins can update orders
-        if not (hasattr(request.user, 'role') and request.user.role == 'admin'):
+        # Only admin can update orders
+        if request.user.role != 'admin':
             return Response(
                 {'error': 'Only admins can update orders.'},
-                status=403
+                status=status.HTTP_403_FORBIDDEN
             )
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
-        # Only admins can delete orders
-        if not (hasattr(request.user, 'role') and request.user.role == 'admin'):
+        # Only admin can delete orders
+        if request.user.role != 'admin':
             return Response(
                 {'error': 'Only admins can delete orders.'},
-                status=403
+                status=status.HTTP_403_FORBIDDEN
             )
         return super().destroy(request, *args, **kwargs)
 
@@ -72,35 +63,33 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         order = self.get_object()
 
-        # Customers can only cancel their own orders
-        if (
-            hasattr(request.user, 'role') and
-            request.user.role != 'admin' and
-            order.user != request.user
-        ):
+        # Check ownership — customer can only cancel own orders
+        if request.user.role != 'admin' and order.user != request.user:
             return Response(
                 {'error': 'You can only cancel your own orders.'},
-                status=403
+                status=status.HTTP_403_FORBIDDEN
             )
 
+        # Prevent double cancellation
         if order.status == Order.STATUS_CANCELLED:
-            return Response({
-                'message': 'Order already cancelled.'
-            })
+            return Response(
+                {'error': 'Order is already cancelled.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
+        # Restore inventory
         for item in order.items.all():
-
             inventory = Inventory.objects.select_for_update().get(
                 product=item.product,
                 warehouse=item.warehouse
             )
-
             inventory.quantity += item.quantity
             inventory.save()
 
         order.status = Order.STATUS_CANCELLED
         order.save()
 
-        return Response({
-            'message': 'Order cancelled successfully.'
-        })
+        return Response(
+            {'message': 'Order cancelled successfully. Inventory restored.'},
+            status=status.HTTP_200_OK
+        )

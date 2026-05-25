@@ -15,7 +15,7 @@ from datetime import timedelta
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
-SECRET_KEY = 'django-secret-key'
+SECRET_KEY = 'django-insecure-x9#k2$mP@qL8vR3nW5jY7uE4tA6sD1fG0hJ!cB*zN&pQ^mX'
 
 
 DEBUG = True
@@ -30,7 +30,7 @@ ALLOWED_HOSTS = [
 
 INSTALLED_APPS = [
 
-    # Default Django Apps
+    # Django Apps
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -43,7 +43,7 @@ INSTALLED_APPS = [
     'drf_spectacular',
     'django_filters',
     'rest_framework_simplejwt',
-    'rest_framework_simplejwt.token_blacklist', 
+    'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
 
     # Local Apps
@@ -65,12 +65,6 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-]
-
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:3000",     # if they use React
-    "http://localhost:5173",     # if they use Vite
-    "http://127.0.0.1:5500",    # if they use Live Server
 ]
 
 CORS_ALLOW_ALL_ORIGINS = True
@@ -114,7 +108,18 @@ DATABASES = {
 
 AUTH_USER_MODEL = 'accounts.CustomUser'
 
-AUTH_PASSWORD_VALIDATORS = []
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {'min_length': 8}
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
+    },
+    {
+        'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
+    },
+]
 
 
 LANGUAGE_CODE = 'en-us'
@@ -135,27 +140,28 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
+
     'DEFAULT_AUTHENTICATION_CLASSES': (
+
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
 
     'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.IsAuthenticated',
+
+        'rest_framework.permissions.AllowAny',
+    ),
+
+    'DEFAULT_SCHEMA_CLASS': (
+
+        'drf_spectacular.openapi.AutoSchema'
     ),
 
     'DEFAULT_FILTER_BACKENDS': (
+
         'django_filters.rest_framework.DjangoFilterBackend',
-        'rest_framework.filters.OrderingFilter',
         'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
     ),
-
-    'DEFAULT_PAGINATION_CLASS':
-        'rest_framework.pagination.PageNumberPagination',
-
-    'PAGE_SIZE': 5,
-
-    'DEFAULT_SCHEMA_CLASS':
-        'drf_spectacular.openapi.AutoSchema',
 }
 
 
@@ -163,9 +169,9 @@ REST_FRAMEWORK = {
 
 SIMPLE_JWT = {
 
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=7),
 
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
 
     'ROTATE_REFRESH_TOKENS': False,
 
@@ -174,30 +180,45 @@ SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-
 SPECTACULAR_SETTINGS = {
+
     'TITLE': 'Inventory Management API',
+
     'DESCRIPTION': 'Professional Inventory & Order Management API',
+
     'VERSION': '1.0.0',
+
     'SERVE_INCLUDE_SCHEMA': False,
+
+    'SCHEMA_PATH_PREFIX': '/api/',
+
     'SWAGGER_UI_SETTINGS': {
+
         'deepLinking': True,
-        'persistAuthorization': True,  #  keeps token after page refresh
+
+        'persistAuthorization': True,
     },
 
-    # this is what makes the Authorize button work
-    'SECURITY': [{'bearerAuth': []}],
+    'SECURITY': [
+
+        {'bearerAuth': []}
+    ],
+
     'COMPONENTS': {
+
         'securitySchemes': {
+
             'bearerAuth': {
+
                 'type': 'http',
+
                 'scheme': 'bearer',
+
                 'bearerFormat': 'JWT',
             }
         }
     },
 }
-
 
 CACHES = {
     "default": {
