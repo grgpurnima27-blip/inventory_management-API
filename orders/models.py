@@ -9,11 +9,15 @@ from warehouses.models import Warehouse
 class Order(models.Model):
 
     STATUS_PENDING = 'pending'
+    STATUS_PROCESSING = 'processing'    # ✅ Added
+    STATUS_SHIPPED = 'shipped'          # ✅ Added
     STATUS_COMPLETED = 'completed'
     STATUS_CANCELLED = 'cancelled'
 
     STATUS_CHOICES = [
         (STATUS_PENDING, 'Pending'),
+        (STATUS_PROCESSING, 'Processing'),  # ✅ Added
+        (STATUS_SHIPPED, 'Shipped'),        # ✅ Added
         (STATUS_COMPLETED, 'Completed'),
         (STATUS_CANCELLED, 'Cancelled'),
     ]
@@ -24,14 +28,17 @@ class Order(models.Model):
         related_name='orders'
     )
 
-    customer_name = models.CharField(
-        max_length=255
+    customer_name = models.CharField(max_length=255)
+
+    delivery_city = models.CharField(
+        max_length=100,
+        default='Kathmandu'
     )
 
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
-        default=STATUS_PENDING  # ← starts as pending
+        default=STATUS_PENDING
     )
 
     total_price = models.DecimalField(
@@ -40,34 +47,47 @@ class Order(models.Model):
         default=0
     )
 
-    created_at = models.DateTimeField(
-        auto_now_add=True
+    original_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0
     )
 
-    updated_at = models.DateTimeField(
-        auto_now=True  # ← updates every time order is saved
+    discount_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0
     )
+
+    # ✅ Tracking timestamps
+    processed_at = models.DateTimeField(null=True, blank=True)
+    shipped_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['-created_at']
 
     def clean(self):
+        errors = {}
         if len(self.customer_name.strip()) < 3:
-            raise ValidationError({
-                'customer_name':
+            errors['customer_name'] = (
                 'Customer name must contain at least 3 characters.'
-            })
+            )
+        if len(self.delivery_city.strip()) < 2:
+            errors['delivery_city'] = 'Delivery city is invalid.'
+        if errors:
+            raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return (
-            f'Order #{self.id} - '
-            f'{self.customer_name} - '
-            f'{self.status}'
-        )
+        return f'Order #{self.id} - {self.customer_name} - {self.status}'
 
 
 class OrderItem(models.Model):
@@ -78,16 +98,8 @@ class OrderItem(models.Model):
         related_name='items'
     )
 
-    product = models.ForeignKey(
-        Product,
-        on_delete=models.CASCADE
-    )
-
-    warehouse = models.ForeignKey(
-        Warehouse,
-        on_delete=models.CASCADE
-    )
-
+    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    warehouse = models.ForeignKey(Warehouse, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField()
 
     unit_price = models.DecimalField(
@@ -101,8 +113,7 @@ class OrderItem(models.Model):
     def clean(self):
         if self.quantity <= 0:
             raise ValidationError({
-                'quantity':
-                'Quantity must be greater than zero.'
+                'quantity': 'Quantity must be greater than zero.'
             })
 
     def save(self, *args, **kwargs):
@@ -110,8 +121,4 @@ class OrderItem(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return (
-            f'Order #{self.order.id} - '
-            f'{self.product.name} x '
-            f'{self.quantity}'
-        )
+        return f'Order #{self.order.id} - {self.product.name} x {self.quantity}'

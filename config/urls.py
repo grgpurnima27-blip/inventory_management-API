@@ -24,99 +24,62 @@ from drf_spectacular.views import (
     SpectacularSwaggerView,
 )
 
-from accounts.jwt_views import (
-    CustomTokenObtainPairView,
-    CustomTokenRefreshView,
-)
+from accounts.jwt_views import CustomTokenRefreshView
 
 from products.views import ProductViewSet
 from warehouses.views import WarehouseViewSet
 from inventory.views import InventoryViewSet
 from orders.views import OrderViewSet
-from reports.views import InventorySummaryAPIView
+from wishlist.views import WishlistViewSet
+
+from django.conf import settings
+from django.conf.urls.static import static
 
 
 router = DefaultRouter()
 
-router.register(
-    'products',
-    ProductViewSet,
-    basename='products'
-)
-
-router.register(
-    'warehouses',
-    WarehouseViewSet,
-    basename='warehouses'
-)
-
-router.register(
-    'inventory',
-    InventoryViewSet,
-    basename='inventory'
-)
-
-router.register(
-    'orders',
-    OrderViewSet,
-    basename='orders'
-)
+router.register('products', ProductViewSet, basename='products')
+router.register('warehouses', WarehouseViewSet, basename='warehouses')
+router.register('inventory', InventoryViewSet, basename='inventory')
+router.register('orders', OrderViewSet, basename='orders')
+router.register('wishlist', WishlistViewSet, basename='wishlist')
 
 
 urlpatterns = [
 
-    # Admin
-    path(
-        'admin/',
-        admin.site.urls
-    ),
+    # Admin Panel
+    path('admin/', admin.site.urls),
 
-    # API Routes
-    path(
-        'api/',
-        include(router.urls)
-    ),
+    # Main API
+    path('api/', include(router.urls)),
 
-    # Auth Routes
-    path(
-        'api/auth/',
-        include('accounts.urls')
-    ),
-
-    # JWT Login
-    path(
-        'api/auth/login/',
-        CustomTokenObtainPairView.as_view(),
-        name='token_obtain_pair'
-    ),
+    # Authentication
+    path('api/auth/', include('accounts.urls')),
 
     # JWT Refresh
     path(
-        'api/auth/refresh/',
+        'api/auth/token/refresh/',
         CustomTokenRefreshView.as_view(),
         name='token_refresh'
     ),
 
-    # Reports
-    path(
-        'api/reports/inventory-summary/',
-        InventorySummaryAPIView.as_view(),
-        name='inventory-summary'
-    ),
+    ### Reports — all report endpoints now handled by reports/urls.py
+    path('api/reports/', include('reports.urls')),
 
-    # Schema
-    path(
-        'api/schema/',
-        SpectacularAPIView.as_view(),
-        name='schema'
-    ),
+    # Reviews
+    path('api/', include('reviews.urls')),
 
-    # Swagger
+    # Coupons
+    path('api/', include('coupons.urls')),
+
+    # OpenAPI Schema
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+
+    # Swagger UI
     path(
         'swagger/',
-        SpectacularSwaggerView.as_view(
-            url_name='schema'
-        ),
+        SpectacularSwaggerView.as_view(url_name='schema'),
         name='swagger-ui'
     ),
-]
+
+] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

@@ -5,6 +5,8 @@ from django.db import transaction
 from rest_framework import serializers
 
 from inventory.models import Inventory
+from coupons.models import Coupon
+from warehouses.models import Warehouse
 
 from .models import Order, OrderItem
 
@@ -17,7 +19,6 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
         fields = [
             'product',
-            'warehouse',
             'quantity',
         ]
 
@@ -44,6 +45,11 @@ class OrderItemReadSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+    warehouse_city = serializers.CharField(
+        source='warehouse.city',
+        read_only=True
+    )
+
     class Meta:
 
         model = OrderItem
@@ -54,6 +60,7 @@ class OrderItemReadSerializer(serializers.ModelSerializer):
             'product_name',
             'warehouse',
             'warehouse_name',
+            'warehouse_city',
             'quantity',
             'unit_price',
         ]
@@ -75,6 +82,25 @@ class OrderSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+    coupon_code = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+        help_text='Enter a coupon code to get a discount.'
+    )
+
+    discount_amount = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        read_only=True
+    )
+
+    original_amount = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        read_only=True
+    )
+
     class Meta:
 
         model = Order
@@ -83,8 +109,12 @@ class OrderSerializer(serializers.ModelSerializer):
             'id',
             'user',
             'customer_name',
+            'delivery_city',
             'status',
+            'original_amount',
+            'discount_amount',
             'total_price',
+            'coupon_code',
             'created_at',
             'items',
             'create_items',
@@ -95,29 +125,34 @@ class OrderSerializer(serializers.ModelSerializer):
             'status',
             'total_price',
             'created_at',
+            'discount_amount',
+            'original_amount',
         ]
-
-    def validate_customer_name(self, value):
-
-        if len(value.strip()) < 3:
-
-            raise serializers.ValidationError(
-                'Customer name must contain at least 3 characters.'
-            )
-
-        return value
 
     @transaction.atomic
     def create(self, validated_data):
 
         items_data = validated_data.pop('create_items')
-
-        # Prevent duplicate user error
-        validated_data.pop('user', None)
-
+        coupon_code = validated_data.pop('coupon_code', None)
+        delivery_city = validated_data['delivery_city']
         user = self.context['request'].user
 
-        # Create order as pending initially
+        ### Validate coupon early before creating order
+        coupon = None
+        if coupon_code:
+            try:
+                coupon = Coupon.objects.get(code=coupon_code.upper())
+            except Coupon.DoesNotExist:
+                raise serializers.ValidationError({
+                    'coupon_code': 'Coupon code not found.'
+                })
+
+            is_valid, message = coupon.is_valid()
+            if not is_valid:
+                raise serializers.ValidationError({
+                    'coupon_code': message
+                })
+
         order = Order.objects.create(
             user=user,
             status=Order.STATUS_PENDING,
@@ -129,60 +164,81 @@ class OrderSerializer(serializers.ModelSerializer):
         for item_data in items_data:
 
             product = item_data['product']
-            warehouse = item_data['warehouse']
             quantity = item_data['quantity']
 
-            try:
+            inventory = Inventory.objects.select_for_update().filter(
+                product=product,
+                warehouse__city__iexact=delivery_city,
+                quantity__gte=quantity
+            ).first()
 
-                inventory = Inventory.objects.select_for_update().get(
-                    product=product,
-                    warehouse=warehouse
-                )
-
-            except Inventory.DoesNotExist:
-
+            if not inventory:
                 raise serializers.ValidationError({
-                    'inventory':
-                    (
-                        f'{product.name} does not exist '
-                        f'in {warehouse.name}.'
+                    'stock': (
+                        f'{product.name} is not available '
+                        f'in {delivery_city} with the requested quantity'
                     )
                 })
 
-            if inventory.quantity < quantity:
-
-                raise serializers.ValidationError({
-                    'stock':
-                    (
-                        f'Only {inventory.quantity} items available '
-                        f'for {product.name} in {warehouse.name}.'
-                    )
-                })
-
-            # Deduct inventory
             inventory.quantity -= quantity
             inventory.save()
-
-            unit_price = product.price
 
             OrderItem.objects.create(
                 order=order,
                 product=product,
-                warehouse=warehouse,
+                warehouse=inventory.warehouse,
                 quantity=quantity,
-                unit_price=unit_price
+                unit_price=product.price
             )
 
-            total_price += unit_price * quantity
+            total_price += product.price * quantity
 
-        # Update order after successful completion
+        #Round total before discount
+        total_price = total_price.quantize(Decimal('0.01'))
+        original_amount = total_price
+        discount_amount = Decimal('0.00')
+
+        if coupon:
+            ### Check minimum order amount
+            if total_price < coupon.minimum_order_amount:
+                raise serializers.ValidationError({
+                    'coupon_code': (
+                        f'Minimum order amount for this coupon is '
+                        f'NPR {coupon.minimum_order_amount}.'
+                    )
+                })
+
+            if coupon.discount_type == Coupon.TYPE_PERCENTAGE:
+                discount_amount = (coupon.discount_value / 100) * total_price
+            else:
+                discount_amount = Decimal(str(coupon.discount_value))
+
+            #Round discount to 2 decimal places
+            discount_amount = discount_amount.quantize(Decimal('0.01'))
+
+            # Discount can't exceed total
+            discount_amount = min(discount_amount, total_price)
+
+            # Round final amount
+            total_price = (total_price - discount_amount).quantize(
+                Decimal('0.01')
+            )
+
+            # Increment coupon used count
+            coupon.used_count += 1
+            coupon.save(update_fields=['used_count'])
+
         order.total_price = total_price
+        order.original_amount = original_amount
+        order.discount_amount = discount_amount
         order.status = Order.STATUS_COMPLETED
 
         order.save(
             update_fields=[
                 'total_price',
                 'status',
+                'original_amount',
+                'discount_amount',
             ]
         )
 

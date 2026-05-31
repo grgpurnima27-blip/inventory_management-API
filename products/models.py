@@ -1,5 +1,6 @@
 from django.db import models
 from django.core.exceptions import ValidationError
+from cloudinary.models import CloudinaryField
 
 
 class Product(models.Model):
@@ -22,12 +23,23 @@ class Product(models.Model):
         decimal_places=2
     )
 
+    image = CloudinaryField(
+        'image',
+        null=True,
+        blank=True,
+        folder='products/',
+    )
+
     created_at = models.DateTimeField(
         auto_now_add=True
     )
 
+    updated_at = models.DateTimeField(
+        auto_now=True
+    )
+
     class Meta:
-        ordering = ['-created_at']
+        ordering = ['-updated_at']
 
     def clean(self):
 
@@ -52,11 +64,8 @@ class Product(models.Model):
             raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
-
         self.full_clean()
-
         super().save(*args, **kwargs)
 
     def __str__(self):
-
         return f'{self.name} ({self.sku})'

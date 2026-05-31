@@ -26,42 +26,31 @@ class Inventory(models.Model):
     created_at = models.DateTimeField(
         auto_now_add=True
     )
-    constraints = [
-    models.UniqueConstraint(
-        fields=['product', 'warehouse'],
-        name='unique_product_warehouse'
-    )
-]
 
+    updated_at = models.DateTimeField(
+        auto_now=True
+    )
 
     class Meta:
-
         constraints = [
             models.UniqueConstraint(
                 fields=['product', 'warehouse'],
                 name='unique_product_warehouse'
             )
         ]
-
-        ordering = ['product__name']
+        ordering = ['-updated_at']  # first newest update
 
     def clean(self):
-
         if self.quantity < 0:
-
             raise ValidationError({
-                'quantity':
-                'Quantity cannot be negative.'
+                'quantity': 'Quantity cannot be negative.'
             })
 
     def save(self, *args, **kwargs):
-
         self.full_clean()
-
         super().save(*args, **kwargs)
 
     def __str__(self):
-
         return (
             f'{self.product.name} - '
             f'{self.warehouse.name}'

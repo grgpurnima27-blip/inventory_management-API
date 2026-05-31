@@ -5,6 +5,11 @@ from django.core.exceptions import ValidationError
 class Warehouse(models.Model):
 
     name = models.CharField(
+        max_length=100,
+        unique=True
+    )
+
+    city = models.CharField(
         max_length=100
     )
 
@@ -12,12 +17,30 @@ class Warehouse(models.Model):
         max_length=255
     )
 
+    latitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True
+    )
+
+    longitude = models.DecimalField(
+        max_digits=9,
+        decimal_places=6,
+        null=True,
+        blank=True
+    )
+
     created_at = models.DateTimeField(
         auto_now_add=True
     )
 
+    updated_at = models.DateTimeField(
+        auto_now=True
+    )
+
     class Meta:
-        ordering = ['name']
+        ordering = ['-updated_at']
 
     def clean(self):
 
@@ -28,7 +51,12 @@ class Warehouse(models.Model):
                 'Warehouse name is too short.'
             )
 
-        if len(self.location.strip()) < 2:
+        if len(self.city.strip()) < 2:
+            errors['city'] = (
+                'City is invalid.'
+            )
+
+        if len(self.location.strip()) < 3:
             errors['location'] = (
                 'Location is invalid.'
             )
@@ -37,11 +65,8 @@ class Warehouse(models.Model):
             raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
-
         self.full_clean()
-
         super().save(*args, **kwargs)
 
     def __str__(self):
-
-        return self.name
+        return f'{self.name} - {self.city}'
