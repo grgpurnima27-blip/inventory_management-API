@@ -99,6 +99,5 @@ env/
 #. whl file, which is also known as a wheel, the new standard of Python packaging
 *.whl
 env/
-config/settings.py
 __pycache__/
 *.pyc
