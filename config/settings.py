@@ -77,6 +77,7 @@ INSTALLED_APPS = [
     'reviews',
     'coupons',
     'wishlist',
+    'notifications',
 ]
 
 # MIDDLEWARE

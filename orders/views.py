@@ -14,6 +14,7 @@ from config.permissions import IsAuthenticatedCustomer, IsAdminRole
 from inventory.models import Inventory
 from .models import Order
 from .serializers import OrderSerializer
+from notifications.utils import send_notification
 
 
 class OrderViewSet(viewsets.ModelViewSet):
@@ -34,7 +35,9 @@ class OrderViewSet(viewsets.ModelViewSet):
         return self.queryset.filter(user=user)
 
     def perform_create(self, serializer):
-        serializer.save()
+        order = serializer.save()
+        # ✅ Notify user when order is placed
+        send_notification(order.user, 'order_placed', order.id)
 
     def update(self, request, *args, **kwargs):
         if request.user.role != 'admin':
@@ -96,6 +99,9 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.cancelled_at = timezone.now()
         order.save()
 
+        # ✅ Notify user when order is cancelled
+        send_notification(order.user, 'order_cancelled', order.id)
+
         return Response(
             {'message': 'Order cancelled successfully. Inventory restored.'},
             status=status.HTTP_200_OK
@@ -122,7 +128,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        #### Build timeline — only show stages that have happened
         timeline = [
             {
                 'stage': 'Order Placed',
@@ -149,7 +154,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                 Order.STATUS_CANCELLED,
                 Order.STATUS_COMPLETED
             ]:
-                #Show pending future stages
                 if stage_key not in ['cancelled']:
                     timeline.append({
                         'stage': stage_label,
@@ -196,13 +200,12 @@ class OrderViewSet(viewsets.ModelViewSet):
         order = self.get_object()
         new_status = request.data.get('status')
 
-        # Valid transitions only
         valid_transitions = {
-            Order.STATUS_PENDING: [Order.STATUS_PROCESSING, Order.STATUS_CANCELLED],
+            Order.STATUS_PENDING:    [Order.STATUS_PROCESSING, Order.STATUS_CANCELLED],
             Order.STATUS_PROCESSING: [Order.STATUS_SHIPPED, Order.STATUS_CANCELLED],
-            Order.STATUS_SHIPPED: [Order.STATUS_COMPLETED],
-            Order.STATUS_COMPLETED: [],
-            Order.STATUS_CANCELLED: [],
+            Order.STATUS_SHIPPED:    [Order.STATUS_COMPLETED],
+            Order.STATUS_COMPLETED:  [],
+            Order.STATUS_CANCELLED:  [],
         }
 
         allowed = valid_transitions.get(order.status, [])
@@ -218,13 +221,12 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        #Set timestamp for the new stage
         now = timezone.now()
         timestamp_map = {
             Order.STATUS_PROCESSING: 'processed_at',
-            Order.STATUS_SHIPPED: 'shipped_at',
-            Order.STATUS_COMPLETED: 'completed_at',
-            Order.STATUS_CANCELLED: 'cancelled_at',
+            Order.STATUS_SHIPPED:    'shipped_at',
+            Order.STATUS_COMPLETED:  'completed_at',
+            Order.STATUS_CANCELLED:  'cancelled_at',
         }
 
         order.status = new_status
@@ -233,6 +235,17 @@ class OrderViewSet(viewsets.ModelViewSet):
             setattr(order, timestamp_field, now)
 
         order.save()
+
+        # ✅ Notify user when order status changes
+        STATUS_NOTIFICATION_MAP = {
+            Order.STATUS_PROCESSING: 'order_processing',
+            Order.STATUS_SHIPPED:    'order_shipped',
+            Order.STATUS_COMPLETED:  'order_completed',
+            Order.STATUS_CANCELLED:  'order_cancelled',
+        }
+        notification_type = STATUS_NOTIFICATION_MAP.get(new_status)
+        if notification_type:
+            send_notification(order.user, notification_type, order.id)
 
         return Response(
             {
