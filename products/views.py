@@ -4,9 +4,9 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
+import os
 import requests
 import cloudinary.uploader
-from django.conf import settings
 
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
 
@@ -26,7 +26,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         filters.OrderingFilter,
     ]
 
-    search_fields = ['name', 'category', 'sku']
+    search_fields  = ['name', 'category', 'sku']
     ordering_fields = ['price', 'created_at', 'name']
 
     def get_permissions(self):
@@ -199,9 +199,16 @@ class ProductViewSet(viewsets.ModelViewSet):
     def fetch_image(self, request, pk=None):
         product = self.get_object()
 
-        #### Search Pexels by product name
-        headers = {'Authorization': settings.PEXELS_API_KEY}
-        params = {'query': product.name, 'per_page': 1}
+        pexels_api_key = os.getenv('PEXELS_API_KEY')
+
+        if not pexels_api_key:
+            return Response(
+                {'error': 'Pexels API key not configured.'},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
+
+        headers = {'Authorization': pexels_api_key}
+        params  = {'query': product.name, 'per_page': 1}
 
         try:
             response = requests.get(
@@ -230,10 +237,10 @@ class ProductViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        ### Get best quality image URL from Pexels
+        # Get best quality image URL from Pexels
         image_url = photos[0]['src']['large']
 
-        ### Upload directly from Pexels URL to Cloudinary
+        # Upload directly from Pexels URL to Cloudinary
         result = cloudinary.uploader.upload(
             image_url,
             folder='products/',
@@ -250,8 +257,8 @@ class ProductViewSet(viewsets.ModelViewSet):
                     f'Image for "{product.name}" fetched from '
                     f'Pexels and saved to Cloudinary.'
                 ),
-                'image_url': result['secure_url'],
-                'photographer': photos[0].get('photographer', 'Unknown'),
+                'image_url':        result['secure_url'],
+                'photographer':     photos[0].get('photographer', 'Unknown'),
                 'pexels_photo_url': photos[0].get('url', ''),
             },
             status=status.HTTP_200_OK

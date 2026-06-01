@@ -86,13 +86,13 @@ pip install -r requirements.txt
 Create a `.env` file in the root directory (or update `config/settings.py` to use `os.getenv` or `decouple`) with your custom API keys:
 ```env
 # Django
-SECRET_KEY=your-django-insecure-key
+DJANGO_SECRET_KEY=your-django-insecure-key
 DEBUG=True
 
 # Cloudinary Integration
-CLOUD_NAME=your_cloudinary_cloud_name
-API_KEY=your_cloudinary_api_key
-API_SECRET=your_cloudinary_api_secret
+CLOUDINARY_CLOUD_NAME=your_cloudinary_cloud_name
+CLOUDINARY_API_KEY=your_cloudinary_api_key
+CLOUDINARY_API_SECRET=your_cloudinary_api_secret
 
 # Image Fetch Fallback (Pexels)
 PEXELS_API_KEY=your_pexels_api_key
