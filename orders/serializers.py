@@ -14,22 +14,14 @@ from .models import Order, OrderItem
 class OrderItemSerializer(serializers.ModelSerializer):
 
     class Meta:
-
-        model = OrderItem
-
-        fields = [
-            'product',
-            'quantity',
-        ]
+        model  = OrderItem
+        fields = ['product', 'quantity']
 
     def validate_quantity(self, value):
-
         if value <= 0:
-
             raise serializers.ValidationError(
                 'Quantity must be greater than zero.'
             )
-
         return value
 
 
@@ -39,21 +31,17 @@ class OrderItemReadSerializer(serializers.ModelSerializer):
         source='product.name',
         read_only=True
     )
-
     warehouse_name = serializers.CharField(
         source='warehouse.name',
         read_only=True
     )
-
     warehouse_city = serializers.CharField(
         source='warehouse.city',
         read_only=True
     )
 
     class Meta:
-
-        model = OrderItem
-
+        model  = OrderItem
         fields = [
             'id',
             'product',
@@ -68,25 +56,19 @@ class OrderItemReadSerializer(serializers.ModelSerializer):
 
 class OrderSerializer(serializers.ModelSerializer):
 
-    items = OrderItemReadSerializer(
-        many=True,
-        read_only=True
-    )
+    items = OrderItemReadSerializer(many=True, read_only=True)
 
-    create_items = OrderItemSerializer(
-        many=True,
-        write_only=True
-    )
+    create_items = OrderItemSerializer(many=True, write_only=True)
 
-    user = serializers.StringRelatedField(
-        read_only=True
-    )
+    user = serializers.StringRelatedField(read_only=True)
 
     coupon_code = serializers.CharField(
         write_only=True,
         required=False,
         allow_blank=True,
-        help_text='Enter a coupon code to get a discount.'
+        allow_null=True,      #  accepts null from Swagger
+        default=None,         #  defaults to None if not provided
+        help_text='Enter a coupon code to get a discount (optional).'
     )
 
     discount_amount = serializers.DecimalField(
@@ -94,7 +76,6 @@ class OrderSerializer(serializers.ModelSerializer):
         decimal_places=2,
         read_only=True
     )
-
     original_amount = serializers.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -102,9 +83,7 @@ class OrderSerializer(serializers.ModelSerializer):
     )
 
     class Meta:
-
-        model = Order
-
+        model  = Order
         fields = [
             'id',
             'user',
@@ -119,7 +98,6 @@ class OrderSerializer(serializers.ModelSerializer):
             'items',
             'create_items',
         ]
-
         read_only_fields = [
             'id',
             'status',
@@ -132,12 +110,12 @@ class OrderSerializer(serializers.ModelSerializer):
     @transaction.atomic
     def create(self, validated_data):
 
-        items_data = validated_data.pop('create_items')
-        coupon_code = validated_data.pop('coupon_code', None)
+        items_data    = validated_data.pop('create_items')
+        coupon_code   = validated_data.pop('coupon_code', None)
         delivery_city = validated_data['delivery_city']
-        user = self.context['request'].user
+        user          = self.context['request'].user
 
-        ### Validate coupon early before creating order
+        # Validate coupon early before touching inventory
         coupon = None
         if coupon_code:
             try:
@@ -153,19 +131,22 @@ class OrderSerializer(serializers.ModelSerializer):
                     'coupon_code': message
                 })
 
+        # Create order with PENDING status
         order = Order.objects.create(
-            user=user,
-            status=Order.STATUS_PENDING,
+            user   = user,
+            status = Order.STATUS_PENDING,   ### stays pending until admin updates
             **validated_data
         )
 
         total_price = Decimal('0.00')
 
+        # Process each item — lock inventory row to prevent race conditions
         for item_data in items_data:
 
-            product = item_data['product']
+            product  = item_data['product']
             quantity = item_data['quantity']
 
+            # select_for_update locks the row so concurrent requests wait
             inventory = Inventory.objects.select_for_update().filter(
                 product=product,
                 warehouse__city__iexact=delivery_city,
@@ -175,8 +156,8 @@ class OrderSerializer(serializers.ModelSerializer):
             if not inventory:
                 raise serializers.ValidationError({
                     'stock': (
-                        f'{product.name} is not available '
-                        f'in {delivery_city} with the requested quantity'
+                        f'Sorry, {product.name} is out of stock in '
+                        f'{delivery_city} with the requested quantity.'
                     )
                 })
 
@@ -184,22 +165,21 @@ class OrderSerializer(serializers.ModelSerializer):
             inventory.save()
 
             OrderItem.objects.create(
-                order=order,
-                product=product,
-                warehouse=inventory.warehouse,
-                quantity=quantity,
-                unit_price=product.price
+                order      = order,
+                product    = product,
+                warehouse  = inventory.warehouse,
+                quantity   = quantity,
+                unit_price = product.price
             )
 
             total_price += product.price * quantity
 
-        #Round total before discount
-        total_price = total_price.quantize(Decimal('0.01'))
+        # Calculate discount
+        total_price     = total_price.quantize(Decimal('0.01'))
         original_amount = total_price
         discount_amount = Decimal('0.00')
 
         if coupon:
-            ### Check minimum order amount
             if total_price < coupon.minimum_order_amount:
                 raise serializers.ValidationError({
                     'coupon_code': (
@@ -213,33 +193,21 @@ class OrderSerializer(serializers.ModelSerializer):
             else:
                 discount_amount = Decimal(str(coupon.discount_value))
 
-            #Round discount to 2 decimal places
             discount_amount = discount_amount.quantize(Decimal('0.01'))
-
-            # Discount can't exceed total
             discount_amount = min(discount_amount, total_price)
+            total_price     = (total_price - discount_amount).quantize(Decimal('0.01'))
 
-            # Round final amount
-            total_price = (total_price - discount_amount).quantize(
-                Decimal('0.01')
-            )
-
-            # Increment coupon used count
             coupon.used_count += 1
             coupon.save(update_fields=['used_count'])
 
-        order.total_price = total_price
+        # Save final totals — status stays PENDING 
+        order.total_price    = total_price
         order.original_amount = original_amount
         order.discount_amount = discount_amount
-        order.status = Order.STATUS_COMPLETED
-
-        order.save(
-            update_fields=[
-                'total_price',
-                'status',
-                'original_amount',
-                'discount_amount',
-            ]
-        )
+        order.save(update_fields=[
+            'total_price',
+            'original_amount',
+            'discount_amount',
+        ])
 
         return order

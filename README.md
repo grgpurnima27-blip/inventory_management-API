@@ -11,6 +11,7 @@ A comprehensive, production-ready backend system built with **Django** and **Dja
 *   **Multi-Warehouse Stock Auto-Routing**: Orders automatically query inventory in the client's `delivery_city` and deduct stock allocations from the city's local warehouse.
 *   **Atomic Inventory Restoration**: When an order is cancelled, inventory quantities are securely returned to their respective warehouses within a database transaction block (`@transaction.atomic`).
 *   **eSewa Payment Integration**: Generates on-demand base64 encoded PNG QR codes tailored for Nepalese eSewa wallets (`esewa://payment`) containing exact amounts and order metadata.
+*   **Real-Time Order Notifications**: Generates localized customer notifications when an order is placed, processed, shipped, completed, or cancelled.
 *   **Built-in Data Caching**: Low-level database query caching implemented on heavy analytical views (`LocMemCache`), caching responses for 60 seconds.
 *   **Cloud Storage for Media**: Integrates with Cloudinary to handle dynamic uploads for product images and user profile avatars.
 *   **Interactive API Documentation**: Auto-generated Swagger & Redoc pages with interactive schema test consoles via `drf-spectacular`.
@@ -39,6 +40,7 @@ erDiagram
     CustomUser ||--o{ Order : "places (1:N)"
     CustomUser ||--o{ Review : "writes (1:N)"
     CustomUser ||--o{ Wishlist : "saves (1:N)"
+    CustomUser ||--o{ Notification : "receives (1:N)"
 
     Product ||--o{ Inventory : "stocked in (1:N)"
     Product ||--o{ OrderItem : "included in (1:N)"
@@ -188,6 +190,15 @@ A detailed listing of core endpoints. All endpoints under `/api/` require header
 | `POST` | `/api/reviews/` | Authenticated | Leave a 1 to 5 star rating (constrained to 1 review per product per customer). |
 | `GET` | `/api/wishlist/` | Authenticated | Retrieve wishlist catalog for the logged-in customer. |
 | `POST` | `/api/wishlist/` | Authenticated | Adds a product to the user's wishlist (unique constraint). |
+
+### 🔔 Notifications (`/api/notifications/`)
+| Method | Endpoint | Access | Description |
+| :--- | :--- | :--- | :--- |
+| `GET` | `/` | Authenticated | List all notifications for the logged-in user. |
+| `GET` | `/unread-count/` | Authenticated | Get the count of unread notifications. |
+| `POST` | `/mark-all-read/` | Authenticated | Mark all notifications as read. |
+| `PATCH`| `/{id}/read/` | Authenticated | Mark a single notification as read. |
+| `DELETE`| `/{id}/` | Authenticated | Delete a single notification. |
 
 ### 📈 Business Analytics Reports (`/api/reports/`) — *Admin Only*
 All reports utilize DRF query-level optimization and are **cached for 60 seconds** to avoid database bottlenecks:

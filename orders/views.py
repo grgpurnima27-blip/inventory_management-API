@@ -36,7 +36,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         order = serializer.save()
-        # ✅ Notify user when order is placed
+        #  Notify user when order is placed
         send_notification(order.user, 'order_placed', order.id)
 
     def update(self, request, *args, **kwargs):
@@ -99,7 +99,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.cancelled_at = timezone.now()
         order.save()
 
-        # ✅ Notify user when order is cancelled
+        # Notify user when order is cancelled
         send_notification(order.user, 'order_cancelled', order.id)
 
         return Response(
@@ -236,7 +236,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         order.save()
 
-        # ✅ Notify user when order status changes
+        #  Notify user when order status changes
         STATUS_NOTIFICATION_MAP = {
             Order.STATUS_PROCESSING: 'order_processing',
             Order.STATUS_SHIPPED:    'order_shipped',
