@@ -31,6 +31,7 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
     ".railway.app",
+    ".up.railway.app",  # Add Railway default domain
 ]
 
 railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN")
@@ -39,6 +40,57 @@ if railway_domain:
 
 CSRF_TRUSTED_ORIGINS = [
     "https://*.railway.app",
+    "https://*.up.railway.app",
+]
+
+# CORS Settings (Updated)
+# Allow all origins in development, restrict in production
+CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only allow all in debug mode
+
+# If not in debug mode, specify allowed origins
+if not DEBUG:
+    # Read allowed origins from environment variable or use defaults
+    cors_origins = os.getenv("CORS_ALLOWED_ORIGINS", "")
+    if cors_origins:
+        CORS_ALLOWED_ORIGINS = cors_origins.split(",")
+    else:
+        CORS_ALLOWED_ORIGINS = [
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://localhost:8000",
+            "https://*.railway.app",
+            "https://*.up.railway.app",
+        ]
+else:
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:8000",
+        "https://*.railway.app",
+        "https://*.up.railway.app",
+    ]
+
+CORS_ALLOW_CREDENTIALS = True
+
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
 ]
 
 # CLOUDINARY
@@ -94,10 +146,9 @@ INSTALLED_APPS = [
 # MIDDLEWARE
 
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",
+    "corsheaders.middleware.CorsMiddleware",  # MUST be first
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
-
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -105,10 +156,6 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
-
-# CORS
-
-CORS_ALLOW_ALL_ORIGINS = True
 
 # URLS
 
@@ -193,6 +240,7 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_STORAGE = (
     "whitenoise.storage.CompressedManifestStaticFilesStorage"
 )
+
 # MEDIA
 
 MEDIA_URL = "/media/"
@@ -200,7 +248,6 @@ MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
-
 
 # REST FRAMEWORK
 REST_FRAMEWORK = {
