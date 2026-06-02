@@ -7,6 +7,7 @@ from datetime import timedelta
 
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework import serializers
 
 from drf_spectacular.utils import extend_schema, OpenApiResponse
 
@@ -17,13 +18,25 @@ from products.models import Product
 from accounts.models import CustomUser
 
 
-class InventorySummaryAPIView(APIView):
+# Added here a  serializer for InventorySummaryAPIView
+class InventorySummarySerializer(serializers.Serializer):
+    total_products = serializers.IntegerField()
+    total_inventory = serializers.IntegerField()
+    low_stock_products = serializers.IntegerField()
+    out_of_stock_products = serializers.IntegerField()
+    total_orders = serializers.IntegerField()
+    pending_orders = serializers.IntegerField()
+    completed_orders = serializers.IntegerField()
+    cancelled_orders = serializers.IntegerField()
 
+
+class InventorySummaryAPIView(APIView):
     permission_classes = [IsAdminRole]
+    # Add serializer_class to fix warning
+    serializer_class = InventorySummarySerializer
 
     @method_decorator(cache_page(60))
     def get(self, request):
-
         total_products = Product.objects.count()
 
         total_inventory = (
@@ -82,7 +95,6 @@ class TopProductsReportAPIView(APIView):
     Top 10 best selling products by quantity sold.
     Filter by date range: ?days=30
     """
-
     permission_classes = [IsAdminRole]
 
     @extend_schema(
@@ -93,7 +105,6 @@ class TopProductsReportAPIView(APIView):
     )
     @method_decorator(cache_page(60))
     def get(self, request):
-
         days = int(request.query_params.get('days', 30))
         since = timezone.now() - timedelta(days=days)
 
@@ -139,7 +150,6 @@ class RevenueByCityAPIView(APIView):
     Revenue breakdown by delivery city.
     Filter by date range: ?days=30
     """
-
     permission_classes = [IsAdminRole]
 
     @extend_schema(
@@ -150,7 +160,6 @@ class RevenueByCityAPIView(APIView):
     )
     @method_decorator(cache_page(60))
     def get(self, request):
-
         days = int(request.query_params.get('days', 30))
         since = timezone.now() - timedelta(days=days)
 
@@ -188,7 +197,6 @@ class TopCustomersReportAPIView(APIView):
     Top 10 customers by total spending.
     Filter by date range: ?days=30
     """
-
     permission_classes = [IsAdminRole]
 
     @extend_schema(
@@ -199,7 +207,6 @@ class TopCustomersReportAPIView(APIView):
     )
     @method_decorator(cache_page(60))
     def get(self, request):
-
         days = int(request.query_params.get('days', 30))
         since = timezone.now() - timedelta(days=days)
 
@@ -244,7 +251,6 @@ class SalesChartReportAPIView(APIView):
     ?period=daily or ?period=monthly
     ?days=30
     """
-
     permission_classes = [IsAdminRole]
 
     @extend_schema(
@@ -258,7 +264,6 @@ class SalesChartReportAPIView(APIView):
     )
     @method_decorator(cache_page(60))
     def get(self, request):
-
         days = int(request.query_params.get('days', 30))
         period = request.query_params.get('period', 'daily')
         since = timezone.now() - timedelta(days=days)
@@ -268,7 +273,7 @@ class SalesChartReportAPIView(APIView):
             created_at__gte=since
         )
 
-        #Group by day or month
+        # Group by day or month
         if period == 'monthly':
             chart_data = (
                 orders
@@ -312,7 +317,6 @@ class CouponUsageReportAPIView(APIView):
     """
     Coupon usage stats — which coupons are used most.
     """
-
     permission_classes = [IsAdminRole]
 
     @extend_schema(
@@ -323,12 +327,11 @@ class CouponUsageReportAPIView(APIView):
     )
     @method_decorator(cache_page(60))
     def get(self, request):
-
         from coupons.models import Coupon
 
         coupons = Coupon.objects.annotate(
             total_discount_given=Sum(
-                'id',  # placeholder — see note below
+                'id',  # placeholder — too see note below
             )
         ).values(
             'code',

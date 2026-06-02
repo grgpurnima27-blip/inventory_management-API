@@ -11,16 +11,22 @@ from .serializers import NotificationSerializer
 
 class NotificationListView(generics.ListAPIView):
     """List all notifications for the logged-in user"""
-    serializer_class   = NotificationSerializer
+    serializer_class = NotificationSerializer
     permission_classes = [IsAuthenticated]
+    # Added this   to fix Swagger warning
+    queryset = Notification.objects.none()
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return Notification.objects.none()
         return Notification.objects.filter(user=self.request.user)
 
 
 class NotificationMarkReadView(APIView):
     """Mark a single notification as read"""
     permission_classes = [IsAuthenticated]
+    # Added here   serializer_class to fix warning
+    serializer_class = NotificationSerializer
 
     def patch(self, request, pk):
         try:
@@ -35,6 +41,8 @@ class NotificationMarkReadView(APIView):
 class NotificationMarkAllReadView(APIView):
     """Mark all notifications as read"""
     permission_classes = [IsAuthenticated]
+    # Added here   serializer_class to fix warning
+    serializer_class = NotificationSerializer
 
     def post(self, request):
         Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
@@ -44,14 +52,22 @@ class NotificationMarkAllReadView(APIView):
 class NotificationDeleteView(generics.DestroyAPIView):
     """Delete a single notification"""
     permission_classes = [IsAuthenticated]
+    # Added here serializer_class to fix warning
+    serializer_class = NotificationSerializer
+    # Added here queryset for Swagger
+    queryset = Notification.objects.none()
 
     def get_queryset(self):
+        if getattr(self, 'swagger_fake_view', False):
+            return Notification.objects.none()
         return Notification.objects.filter(user=self.request.user)
 
 
 class NotificationUnreadCountView(APIView):
     """Get count of unread notifications"""
     permission_classes = [IsAuthenticated]
+    # Added here serializer_class to fix warning
+    serializer_class = NotificationSerializer
 
     def get(self, request):
         count = Notification.objects.filter(user=request.user, is_read=False).count()

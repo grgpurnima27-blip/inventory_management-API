@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 
 from .models import Inventory
 
@@ -18,9 +19,7 @@ class InventorySerializer(serializers.ModelSerializer):
     stock_status = serializers.SerializerMethodField()
 
     class Meta:
-
         model = Inventory
-
         fields = [
             'id',
             'product',
@@ -30,24 +29,19 @@ class InventorySerializer(serializers.ModelSerializer):
             'quantity',
             'stock_status',
         ]
-
         read_only_fields = [
             'id',
             'stock_status',
         ]
 
     def validate_quantity(self, value):
-
         if value < 0:
-
             raise serializers.ValidationError(
                 'Quantity cannot be negative.'
             )
-
         return value
 
     def validate(self, attrs):
-
         product = attrs.get('product')
         warehouse = attrs.get('warehouse')
 
@@ -56,12 +50,10 @@ class InventorySerializer(serializers.ModelSerializer):
             warehouse=warehouse
         )
 
-        # Ignore current object during update
         if self.instance:
             queryset = queryset.exclude(id=self.instance.id)
 
         if queryset.exists():
-
             raise serializers.ValidationError({
                 'inventory':
                 (
@@ -73,12 +65,11 @@ class InventorySerializer(serializers.ModelSerializer):
 
         return attrs
 
+    # Add here @extend_schema_field decorator to fix warning
+    @extend_schema_field(serializers.CharField)
     def get_stock_status(self, obj):
-
         if obj.quantity == 0:
             return 'Out of Stock'
-
         if obj.quantity < 5:
             return 'Low Stock'
-
         return 'In Stock'

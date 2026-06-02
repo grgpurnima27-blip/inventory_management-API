@@ -14,10 +14,14 @@ from .serializers import WishlistReadSerializer, WishlistWriteSerializer
 
 @extend_schema(tags=['wishlist'])
 class WishlistViewSet(viewsets.ModelViewSet):
-
     permission_classes = [IsAuthenticated]
+    # Added here queryset for Swagger to fix warnings
+    queryset = Wishlist.objects.none()
 
     def get_queryset(self):
+        # TO Check if this is for Swagger documentation
+        if getattr(self, 'swagger_fake_view', False):
+            return Wishlist.objects.none()
         # Each user only sees their own wishlist
         return Wishlist.objects.filter(
             user=self.request.user
@@ -76,7 +80,7 @@ class WishlistViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK
         )
 
-    #  Block update — wishlist items are add/remove only
+    # TO Block update — wishlist items are add/remove only
     def update(self, request, *args, **kwargs):
         return Response(
             {'error': 'Use add or remove instead.'},
