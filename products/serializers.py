@@ -4,7 +4,9 @@ from .models import Product
 
 class ProductReadSerializer(serializers.ModelSerializer):
     """Public - everyone can see including image"""
-
+    # Add full image URL field
+    image_url = serializers.SerializerMethodField()
+    
     class Meta:
         model = Product
         fields = [
@@ -14,14 +16,21 @@ class ProductReadSerializer(serializers.ModelSerializer):
             'category',
             'price',
             'image',
+            'image_url',  # it adds new field
             'created_at',
             'updated_at',
         ]
+    
+    def get_image_url(self, obj):
+        """Return full Cloudinary URL for the image"""
+        if obj.image:
+            return obj.image.url  # IT returns the complete Cloudinary URL
+        return None
 
 
 class ProductWriteSerializer(serializers.ModelSerializer):
     """Admin only - create/update with image upload"""
-
+    
     image = serializers.ImageField(
         required=False,
         allow_null=True,
