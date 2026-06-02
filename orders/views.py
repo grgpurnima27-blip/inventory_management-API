@@ -3,6 +3,7 @@ import base64
 from io import BytesIO
 from django.db import transaction
 from django.utils import timezone
+from django.shortcuts import get_object_or_404
 
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -12,7 +13,9 @@ from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
 
 from config.permissions import IsAuthenticatedCustomer, IsAdminRole
 from inventory.models import Inventory
-from .models import Order
+from products.models import Product
+from warehouses.models import Warehouse
+from .models import Order, OrderItem
 from .serializers import OrderSerializer
 from notifications.utils import send_notification
 
@@ -40,19 +43,129 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         """Create order with payment method preference"""
-        serializer = self.get_serializer(data=request.data)
+        # Extract items from either 'items' or 'create_items'
+        data = request.data.copy()
+        
+        # NEW: Handle both field names
+        if 'create_items' in data and 'items' not in data:
+            data['items'] = data['create_items']
+        
+        serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         
         # Get payment method from request (default to COD)
         payment_method = request.data.get('payment_method', Order.PAYMENT_METHOD_COD)
         
-        # Save order with payment method
-        order = serializer.save(payment_method=payment_method)
+        # Get items data
+        items_data = request.data.get('items', [])
+        if not items_data:
+            items_data = request.data.get('create_items', [])
+        
+        if not items_data:
+            return Response(
+                {'error': 'At least one item is required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Calculate totals
+        original_amount = 0
+        discount_amount = float(request.data.get('discount_amount', 0))
+        
+        # Validate and process items
+        order_items = []
+        for item in items_data:
+            product_id = item.get('product')
+            quantity = int(item.get('quantity', 1))
+            
+            try:
+                product = Product.objects.get(id=product_id)
+            except Product.DoesNotExist:
+                return Response(
+                    {'error': f'Product with id {product_id} does not exist.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Get warehouse (you can modify this logic)
+            warehouse_id = item.get('warehouse')
+            if warehouse_id:
+                try:
+                    warehouse = Warehouse.objects.get(id=warehouse_id)
+                except Warehouse.DoesNotExist:
+                    return Response(
+                        {'error': f'Warehouse with id {warehouse_id} does not exist.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            else:
+                # Use first available warehouse or default
+                warehouse = Warehouse.objects.first()
+                if not warehouse:
+                    return Response(
+                        {'error': 'No warehouse available.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            # Check inventory
+            try:
+                inventory = Inventory.objects.get(product=product, warehouse=warehouse)
+                if inventory.quantity < quantity:
+                    return Response(
+                        {'error': f'Insufficient stock for {product.name}. Available: {inventory.quantity}'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            except Inventory.DoesNotExist:
+                return Response(
+                    {'error': f'Product {product.name} not found in warehouse.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            unit_price = float(product.price)
+            item_total = unit_price * quantity
+            original_amount += item_total
+            
+            order_items.append({
+                'product': product,
+                'warehouse': warehouse,
+                'quantity': quantity,
+                'unit_price': unit_price
+            })
+        
+        total_price = original_amount - discount_amount
+        
+        # Create order
+        order = Order.objects.create(
+            user=request.user,
+            customer_name=request.data.get('customer_name'),
+            delivery_city=request.data.get('delivery_city', 'Kathmandu'),
+            payment_method=payment_method,
+            original_amount=original_amount,
+            discount_amount=discount_amount,
+            total_price=total_price,
+            status=Order.STATUS_PENDING
+        )
+        
+        # Create order items and update inventory
+        for item_data in order_items:
+            OrderItem.objects.create(
+                order=order,
+                product=item_data['product'],
+                warehouse=item_data['warehouse'],
+                quantity=item_data['quantity'],
+                unit_price=item_data['unit_price']
+            )
+            
+            # Update inventory
+            inventory = Inventory.objects.get(
+                product=item_data['product'],
+                warehouse=item_data['warehouse']
+            )
+            inventory.quantity -= item_data['quantity']
+            inventory.save()
         
         # Notify user
         send_notification(order.user, 'order_placed', order.id)
         
         # Prepare response
+        serializer = self.get_serializer(order)
         response_data = serializer.data
         response_data['payment_method'] = payment_method
         
@@ -61,10 +174,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             qr_data = self.generate_payment_qr(order)
             response_data['qr_code'] = qr_data
             response_data['payment_instructions'] = 'Scan this QR code with eSewa app to complete payment'
-            response_data['payment_status'] = 'pending'
         else:
             response_data['payment_instructions'] = 'Pay cash upon delivery'
-            response_data['payment_status'] = 'pending'
         
         headers = self.get_success_headers(serializer.data)
         return Response(response_data, status=status.HTTP_201_CREATED, headers=headers)
@@ -156,6 +267,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Restore inventory
         for item in order.items.all():
             inventory = Inventory.objects.select_for_update().get(
                 product=item.product,
