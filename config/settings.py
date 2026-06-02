@@ -5,6 +5,7 @@ Django settings for config project.
 from pathlib import Path
 import os
 from datetime import timedelta
+from django.core.exceptions import ImproperlyConfigured
 
 from dotenv import load_dotenv
 import dj_database_url
@@ -15,8 +16,14 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY
+SECRET_KEY = os.getenv("SECRET_KEY") or os.getenv("DJANGO_SECRET_KEY")
 
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")
+# Check if SECRET_KEY is set (critical for production)
+if not SECRET_KEY:
+    raise ImproperlyConfigured(
+        "The DJANGO_SECRET_KEY environment variable must not be empty. "
+        "Please set it in your Railway.app environment variables."
+    )
 
 DEBUG = os.getenv("DEBUG", "False") == "True"
 

@@ -11,6 +11,16 @@ from .models import Profile
 User = get_user_model()
 
 
+# ADD THIS USER SERIALIZER
+class UserSerializer(serializers.ModelSerializer):
+    """Serializer for User model - used for MeView and user responses"""
+    
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'role', 'date_joined', 'last_login']
+        read_only_fields = ['id', 'date_joined', 'last_login']
+
+
 class RegisterSerializer(serializers.ModelSerializer):
 
     password = serializers.CharField(

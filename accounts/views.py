@@ -16,6 +16,7 @@ from .serializers import (
     ChangePasswordSerializer,
     LogoutSerializer,
     ProfileSerializer,
+    UserSerializer,
 )
 
 
@@ -28,6 +29,7 @@ class RegisterView(generics.CreateAPIView):
 @extend_schema(tags=['auth'], request=LoginSerializer)
 class LoginView(APIView):
     permission_classes = [AllowAny]
+    serializer_class = LoginSerializer
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
@@ -38,6 +40,7 @@ class LoginView(APIView):
 @extend_schema(tags=['auth'], request=AdminLoginSerializer)
 class AdminLoginView(APIView):
     permission_classes = [AllowAny]
+    serializer_class = AdminLoginSerializer
 
     def post(self, request):
         serializer = AdminLoginSerializer(data=request.data)
@@ -45,22 +48,24 @@ class AdminLoginView(APIView):
         return Response(serializer.validated_data, status=status.HTTP_200_OK)
 
 
-@extend_schema(tags=['auth'])
+@extend_schema(
+    tags=['auth'],
+    responses={200: UserSerializer},
+    description="Get current authenticated user's information"
+)
 class MeView(APIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = UserSerializer
 
     def get(self, request):
         user = request.user
-        return Response({
-            'id': user.id,
-            'username': user.username,
-            'email': user.email,
-            'role': user.role,
-        })
+        serializer = UserSerializer(user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class ChangePasswordView(APIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = ChangePasswordSerializer
 
     @extend_schema(
         summary='Change Password',
@@ -88,6 +93,7 @@ class ChangePasswordView(APIView):
 
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
+    serializer_class = LogoutSerializer
 
     @extend_schema(
         summary='Logout',
@@ -120,6 +126,7 @@ class LogoutView(APIView):
 class ProfileView(APIView):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
+    serializer_class = ProfileSerializer
 
     @extend_schema(
         summary='Get Profile',
