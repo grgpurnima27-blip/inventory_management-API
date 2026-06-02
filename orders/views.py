@@ -36,8 +36,77 @@ class OrderViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         order = serializer.save()
-        #  Notify user when order is placed
         send_notification(order.user, 'order_placed', order.id)
+
+    def create(self, request, *args, **kwargs):
+        """Create order with payment method preference"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
+        # Get payment method from request (default to COD)
+        payment_method = request.data.get('payment_method', Order.PAYMENT_METHOD_COD)
+        
+        # Save order with payment method
+        order = serializer.save(payment_method=payment_method)
+        
+        # Notify user
+        send_notification(order.user, 'order_placed', order.id)
+        
+        # Prepare response
+        response_data = serializer.data
+        response_data['payment_method'] = payment_method
+        
+        # Generate QR code only if user chose eSewa
+        if payment_method == Order.PAYMENT_METHOD_ESEWA:
+            qr_data = self.generate_payment_qr(order)
+            response_data['qr_code'] = qr_data
+            response_data['payment_instructions'] = 'Scan this QR code with eSewa app to complete payment'
+            response_data['payment_status'] = 'pending'
+        else:
+            response_data['payment_instructions'] = 'Pay cash upon delivery'
+            response_data['payment_status'] = 'pending'
+        
+        headers = self.get_success_headers(serializer.data)
+        return Response(response_data, status=status.HTTP_201_CREATED, headers=headers)
+
+    def generate_payment_qr(self, order):
+        """Generate QR code for eSewa payment"""
+        if order.status == Order.STATUS_CANCELLED:
+            return None
+            
+        # eSewa payment URL
+        esewa_url = (
+            f"https://esewa.com.np/epay/main?"
+            f"pid=ORDER-{order.id}&"
+            f"amt={order.total_price}&"
+            f"scd=EPAYTEST"
+        )
+        
+        # Generate QR code
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_H,
+            box_size=10,
+            border=4,
+        )
+        qr.add_data(esewa_url)
+        qr.make(fit=True)
+        
+        # Create image
+        img = qr.make_image(fill_color='#60BB46', back_color='white')
+        
+        # Convert to base64
+        buffer = BytesIO()
+        img.save(buffer, format='PNG')
+        qr_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        
+        return {
+            'qr_code': f'data:image/png;base64,{qr_base64}',
+            'amount': str(order.total_price),
+            'payment_method': 'eSewa',
+            'order_id': order.id,
+            'esewa_url': esewa_url,
+        }
 
     def update(self, request, *args, **kwargs):
         if request.user.role != 'admin':
@@ -99,7 +168,6 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.cancelled_at = timezone.now()
         order.save()
 
-        # Notify user when order is cancelled
         send_notification(order.user, 'order_cancelled', order.id)
 
         return Response(
@@ -168,6 +236,8 @@ class OrderViewSet(viewsets.ModelViewSet):
                 'current_status': order.status,
                 'delivery_city': order.delivery_city,
                 'total_price': str(order.total_price),
+                'payment_method': order.payment_method,
+                'payment_status': order.payment_status,
                 'timeline': timeline,
             },
             status=status.HTTP_200_OK
@@ -236,7 +306,6 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         order.save()
 
-        #  Notify user when order status changes
         STATUS_NOTIFICATION_MAP = {
             Order.STATUS_PROCESSING: 'order_processing',
             Order.STATUS_SHIPPED:    'order_shipped',
@@ -258,11 +327,79 @@ class OrderViewSet(viewsets.ModelViewSet):
         )
 
     @extend_schema(
-        summary='Get eSewa Payment QR',
-        description='Generates an eSewa payment QR for the exact order amount.',
+        summary='Confirm eSewa Payment',
+        description='Confirm payment after eSewa callback',
+        responses={
+            200: OpenApiResponse(description='Payment confirmed successfully.'),
+            400: OpenApiResponse(description='Invalid payment data.'),
+        },
+        tags=['orders']
+    )
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='confirm-payment',
+        permission_classes=[IsAuthenticatedCustomer]
+    )
+    def confirm_payment(self, request, pk=None):
+        """Confirm eSewa payment for an order"""
+        order = self.get_object()
+        
+        if request.user.role != 'admin' and order.user != request.user:
+            return Response(
+                {'error': 'You can only confirm payment for your own orders.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        if order.payment_method != Order.PAYMENT_METHOD_ESEWA:
+            return Response(
+                {'error': 'This order is not for eSewa payment.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        if order.payment_status == 'paid':
+            return Response(
+                {'error': 'Payment already confirmed for this order.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        transaction_id = request.data.get('transaction_id')
+        if not transaction_id:
+            return Response(
+                {'error': 'Transaction ID is required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Update payment status
+        order.payment_status = 'paid'
+        order.payment_transaction_id = transaction_id
+        order.paid_at = timezone.now()
+        order.save()
+        
+        # Auto-update order status to processing
+        if order.status == Order.STATUS_PENDING:
+            order.status = Order.STATUS_PROCESSING
+            order.processed_at = timezone.now()
+            order.save()
+        
+        send_notification(order.user, 'payment_confirmed', order.id)
+        
+        return Response(
+            {
+                'message': 'Payment confirmed successfully!',
+                'order_id': order.id,
+                'payment_status': order.payment_status,
+                'transaction_id': order.payment_transaction_id,
+            },
+            status=status.HTTP_200_OK
+        )
+
+    @extend_schema(
+        summary='Get Payment QR Code',
+        description='Get QR code for eSewa payment (only if payment method is eSewa)',
         responses={
             200: OpenApiResponse(description='QR code generated successfully.'),
-            400: OpenApiResponse(description='Order is cancelled.'),
+            400: OpenApiResponse(description='Order not eligible for QR payment.'),
             403: OpenApiResponse(description='Not your order.'),
         },
         tags=['orders']
@@ -274,12 +411,25 @@ class OrderViewSet(viewsets.ModelViewSet):
         permission_classes=[IsAuthenticatedCustomer]
     )
     def payment_qr(self, request, pk=None):
+        """Get QR code for eSewa payment"""
         order = self.get_object()
 
         if request.user.role != 'admin' and order.user != request.user:
             return Response(
-                {'error': 'You can only pay for your own orders.'},
+                {'error': 'You can only access your own orders.'},
                 status=status.HTTP_403_FORBIDDEN
+            )
+
+        if order.payment_method != Order.PAYMENT_METHOD_ESEWA:
+            return Response(
+                {'error': 'This order is not for eSewa payment.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if order.payment_status == 'paid':
+            return Response(
+                {'error': 'This order has already been paid.'},
+                status=status.HTTP_400_BAD_REQUEST
             )
 
         if order.status == Order.STATUS_CANCELLED:
@@ -288,28 +438,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        esewa_url = (
-            f"esewa://payment?"
-            f"amount={order.total_price}&"
-            f"remarks=Order%23{order.id}&"
-            f"pid=ORDER-{order.id}"
-        )
-
-        qr = qrcode.QRCode(
-            version=1,
-            error_correction=qrcode.constants.ERROR_CORRECT_H,
-            box_size=10,
-            border=4,
-        )
-        qr.add_data(esewa_url)
-        qr.make(fit=True)
-
-        img = qr.make_image(fill_color='#60BB46', back_color='white')
-
-        buffer = BytesIO()
-        img.save(buffer, format='PNG')
-        buffer.seek(0)
-        qr_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        qr_data = self.generate_payment_qr(order)
 
         return Response(
             {
@@ -318,11 +447,14 @@ class OrderViewSet(viewsets.ModelViewSet):
                 'amount': str(order.total_price),
                 'currency': 'NPR',
                 'payment_method': 'eSewa',
-                'esewa_url': esewa_url,
-                'qr_code': f'data:image/png;base64,{qr_base64}',
+                'payment_status': order.payment_status,
+                'qr_code': qr_data['qr_code'],
+                'esewa_url': qr_data['esewa_url'],
                 'instructions': (
-                    f'Open eSewa app → Scan QR → '
-                    f'Confirm payment of NPR {order.total_price}'
+                    f'1. Open eSewa app\n'
+                    f'2. Scan the QR code\n'
+                    f'3. Confirm payment of NPR {order.total_price}\n'
+                    f'4. After payment, call confirm-payment endpoint with transaction ID'
                 ),
             },
             status=status.HTTP_200_OK
