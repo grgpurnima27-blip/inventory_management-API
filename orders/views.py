@@ -21,20 +21,19 @@ from .serializers import OrderSerializer
 from notifications.utils import send_notification
 
 
-# Define inline serializer for Swagger documentation
+# Define inline serializer for Swagger documentation (without 'example' parameter)
 class OrderItemCreateSerializer(serializers.Serializer):
-    product = serializers.IntegerField(help_text='Product ID', example=2)
-    quantity = serializers.IntegerField(help_text='Quantity', example=1, min_value=1)
+    product = serializers.IntegerField(help_text='Product ID')
+    quantity = serializers.IntegerField(help_text='Quantity', min_value=1)
 
 
 class OrderCreateSerializer(serializers.Serializer):
-    customer_name = serializers.CharField(help_text='Customer full name', example='priscagurung')
-    delivery_city = serializers.CharField(help_text='Delivery city', example='Kathmandu')
+    customer_name = serializers.CharField(help_text='Customer full name')
+    delivery_city = serializers.CharField(help_text='Delivery city')
     payment_method = serializers.ChoiceField(
         choices=['esewa', 'cod'],
         default='cod',
-        help_text='Payment method',
-        example='esewa'
+        help_text='Payment method'
     )
     items = OrderItemCreateSerializer(many=True, help_text='List of products to order')
 
@@ -72,7 +71,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         tags=['orders'],
         examples=[
             OpenApiExample(
-                name='eSewa Payment Example',
+                'eSewa Payment Example',
                 description='Order with eSewa payment (QR code will be generated)',
                 value={
                     'customer_name': 'priscagurung',
@@ -85,7 +84,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 request_only=True,
             ),
             OpenApiExample(
-                name='Cash on Delivery Example',
+                'Cash on Delivery Example',
                 description='Order with Cash on Delivery payment',
                 value={
                     'customer_name': 'john_doe',
@@ -99,7 +98,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 request_only=True,
             ),
             OpenApiExample(
-                name='Multiple Products Example',
+                'Multiple Products Example',
                 description='Order with multiple products',
                 value={
                     'customer_name': 'jane_smith',
