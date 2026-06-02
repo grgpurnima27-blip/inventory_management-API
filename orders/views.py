@@ -9,7 +9,8 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample, inline_serializer
+from rest_framework import serializers
 
 from config.permissions import IsAuthenticatedCustomer, IsAdminRole
 from inventory.models import Inventory
@@ -18,6 +19,24 @@ from warehouses.models import Warehouse
 from .models import Order, OrderItem
 from .serializers import OrderSerializer
 from notifications.utils import send_notification
+
+
+# Define inline serializer for Swagger documentation
+class OrderItemCreateSerializer(serializers.Serializer):
+    product = serializers.IntegerField(help_text='Product ID', example=2)
+    quantity = serializers.IntegerField(help_text='Quantity', example=1, min_value=1)
+
+
+class OrderCreateSerializer(serializers.Serializer):
+    customer_name = serializers.CharField(help_text='Customer full name', example='priscagurung')
+    delivery_city = serializers.CharField(help_text='Delivery city', example='Kathmandu')
+    payment_method = serializers.ChoiceField(
+        choices=['esewa', 'cod'],
+        default='cod',
+        help_text='Payment method',
+        example='esewa'
+    )
+    items = OrderItemCreateSerializer(many=True, help_text='List of products to order')
 
 
 class OrderViewSet(viewsets.ModelViewSet):
@@ -41,25 +60,81 @@ class OrderViewSet(viewsets.ModelViewSet):
         order = serializer.save()
         send_notification(order.user, 'order_placed', order.id)
 
+    @extend_schema(
+        summary='Create Order',
+        description='Create a new order with items and payment method preference. For eSewa payment, a QR code will be generated.',
+        request=OrderCreateSerializer,
+        responses={
+            201: OrderSerializer,
+            400: OpenApiResponse(description='Bad request - invalid data'),
+            401: OpenApiResponse(description='Unauthorized - valid token required'),
+        },
+        tags=['orders'],
+        examples=[
+            OpenApiExample(
+                name='eSewa Payment Example',
+                description='Order with eSewa payment (QR code will be generated)',
+                value={
+                    'customer_name': 'priscagurung',
+                    'delivery_city': 'Kathmandu',
+                    'payment_method': 'esewa',
+                    'items': [
+                        {'product': 2, 'quantity': 1}
+                    ]
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                name='Cash on Delivery Example',
+                description='Order with Cash on Delivery payment',
+                value={
+                    'customer_name': 'john_doe',
+                    'delivery_city': 'Pokhara',
+                    'payment_method': 'cod',
+                    'items': [
+                        {'product': 1, 'quantity': 2},
+                        {'product': 3, 'quantity': 1}
+                    ]
+                },
+                request_only=True,
+            ),
+            OpenApiExample(
+                name='Multiple Products Example',
+                description='Order with multiple products',
+                value={
+                    'customer_name': 'jane_smith',
+                    'delivery_city': 'Lalitpur',
+                    'payment_method': 'esewa',
+                    'items': [
+                        {'product': 2, 'quantity': 1},
+                        {'product': 4, 'quantity': 3},
+                        {'product': 6, 'quantity': 2}
+                    ]
+                },
+                request_only=True,
+            ),
+        ]
+    )
     def create(self, request, *args, **kwargs):
         """Create order with payment method preference"""
         # Extract items from either 'items' or 'create_items'
         data = request.data.copy()
         
-        # NEW: Handle both field names
+        # Handle both field names for backward compatibility
         if 'create_items' in data and 'items' not in data:
             data['items'] = data['create_items']
         
-        serializer = self.get_serializer(data=data)
-        serializer.is_valid(raise_exception=True)
-        
-        # Get payment method from request (default to COD)
-        payment_method = request.data.get('payment_method', Order.PAYMENT_METHOD_COD)
+        # Validate required fields
+        if not data.get('customer_name'):
+            return Response(
+                {'error': 'customer_name is required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         # Get items data
-        items_data = request.data.get('items', [])
+        items_data = data.get('items', [])
         if not items_data:
-            items_data = request.data.get('create_items', [])
+            items_data = data.get('create_items', [])
         
         if not items_data:
             return Response(
@@ -67,15 +142,37 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # Get payment method from request (default to COD)
+        payment_method = data.get('payment_method', Order.PAYMENT_METHOD_COD)
+        
+        # Validate payment method
+        if payment_method not in [Order.PAYMENT_METHOD_ESEWA, Order.PAYMENT_METHOD_COD]:
+            return Response(
+                {'error': f'Invalid payment_method. Must be "{Order.PAYMENT_METHOD_ESEWA}" or "{Order.PAYMENT_METHOD_COD}".'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         # Calculate totals
         original_amount = 0
-        discount_amount = float(request.data.get('discount_amount', 0))
+        discount_amount = float(data.get('discount_amount', 0))
         
         # Validate and process items
         order_items = []
         for item in items_data:
             product_id = item.get('product')
             quantity = int(item.get('quantity', 1))
+            
+            if not product_id:
+                return Response(
+                    {'error': 'Each item must have a product ID.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if quantity <= 0:
+                return Response(
+                    {'error': f'Quantity must be greater than 0 for product ID {product_id}.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
             try:
                 product = Product.objects.get(id=product_id)
@@ -85,7 +182,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Get warehouse (you can modify this logic)
+            # Get warehouse
             warehouse_id = item.get('warehouse')
             if warehouse_id:
                 try:
@@ -134,8 +231,8 @@ class OrderViewSet(viewsets.ModelViewSet):
         # Create order
         order = Order.objects.create(
             user=request.user,
-            customer_name=request.data.get('customer_name'),
-            delivery_city=request.data.get('delivery_city', 'Kathmandu'),
+            customer_name=data.get('customer_name'),
+            delivery_city=data.get('delivery_city', 'Kathmandu'),
             payment_method=payment_method,
             original_amount=original_amount,
             discount_amount=discount_amount,
