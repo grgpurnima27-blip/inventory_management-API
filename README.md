@@ -7,6 +7,7 @@ A comprehensive, production-ready backend system built with **Django** and **Dja
 ## 🚀 Key Highlights
 
 *   **Secure JWT Authentication**: Powered by SimpleJWT with token blacklist support on logout and a 7-day access token lifetime.
+*   **Email Verification & Password Reset**: Enhances authentication security by requiring new registrations to verify their email before log in. Features automated, secure, time-limited tokens (24h expiry) for activation and password reset using formatted HTML templates.
 *   **Role-Based Access Control (RBAC)**: Fine-grained permissions allowing public read-only views for catalogs, customer-specific actions for order placement/tracking, and full-privileged access for admins.
 *   **Multi-Warehouse Stock Auto-Routing**: Orders automatically query inventory in the client's `delivery_city` and deduct stock allocations from the city's local warehouse.
 *   **Atomic Inventory Restoration**: When an order is cancelled, inventory quantities are securely returned to their respective warehouses within a database transaction block (`@transaction.atomic`).
@@ -144,9 +145,12 @@ A detailed listing of core endpoints. All endpoints under `/api/` require header
 ### 🔑 Authentication (`/api/auth/`)
 | Method | Endpoint | Access | Description |
 | :--- | :--- | :--- | :--- |
-| `POST` | `/register/` | **Public** | Registers a new client with the default `customer` role. |
-| `POST` | `/login/` | **Public** | Authenticates a user and returns JWT access/refresh tokens. |
-| `POST` | `/admin/login/` | **Public** | Authenticates an admin and returns JWT (fails if role != 'admin'). |
+| `POST` | `/register/` | **Public** | Registers a new client with the default `customer` role and triggers a verification email. |
+| `GET` | `/verify-email/{token}/` | **Public** | Verifies the registration token and activates the account. |
+| `POST` | `/login/` | **Public** | Authenticates a user (requires verified email) and returns JWT access/refresh tokens. |
+| `POST` | `/admin/login/` | **Public** | Authenticates an admin (requires verified email) and returns JWT (fails if role != 'admin'). |
+| `POST` | `/forgot-password/` | **Public** | Submits an email address to request a password reset link. |
+| `POST` | `/reset-password/{token}/` | **Public** | Submits a new password along with the reset token to update credentials. |
 | `POST` | `/token/refresh/` | **Public** | Submits a refresh token to generate a new active access token. |
 | `GET` | `/me/` | Authenticated | Retrieves profile overview of the logged-in user. |
 | `POST` | `/change-password/` | Authenticated | Updates account password. |

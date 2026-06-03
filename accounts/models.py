@@ -15,6 +15,7 @@ class CustomUser(AbstractUser):
         choices=ROLE_CHOICES,
         default='customer'
     )
+    is_email_verified= models.BooleanField(default=False)
 
     def is_admin_user(self):
         return self.role == 'admin'
@@ -22,6 +23,7 @@ class CustomUser(AbstractUser):
     def save(self, *args, **kwargs):
         if self.is_staff:
             self.role = 'admin'
+            self.is_email_verified= True
         super().save(*args, **kwargs)
 
     def __str__(self):

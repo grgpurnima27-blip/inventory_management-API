@@ -1,6 +1,7 @@
 # Create your tests here.
 from django.test import TestCase
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
+User = get_user_model()
 
 from products.models import Product
 from warehouses.models import Warehouse
@@ -25,6 +26,7 @@ class OrderTestCase(TestCase):
 
         self.warehouse = Warehouse.objects.create(
             name='Main Warehouse',
+            city='Kathmandu',
             location='Kathmandu'
         )
 

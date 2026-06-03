@@ -31,7 +31,7 @@ ALLOWED_HOSTS = [
     "127.0.0.1",
     "localhost",
     ".railway.app",
-    ".up.railway.app",  # Add Railway default domain
+    ".up.railway.app",  ### Add Railway default domain
 ]
 
 railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN")
@@ -113,6 +113,19 @@ DEFAULT_FILE_STORAGE = (
 
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 
+EMAIL_BACKEND      = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST         = 'smtp.gmail.com'
+EMAIL_PORT         = 587
+EMAIL_USE_TLS      = True
+EMAIL_HOST_USER    = os.getenv('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
+ 
+# Frontend/Backend URL for email links
+FRONTEND_URL = os.getenv(
+    'FRONTEND_URL',
+    'https://inventorymanagement-api-production.up.railway.app'
+)
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -167,9 +180,8 @@ WSGI_APPLICATION = "config.wsgi.application"
 
 TEMPLATES = [
     {
-        "BACKEND":
-        "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [BASE_DIR], 
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [

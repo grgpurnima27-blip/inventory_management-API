@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verify your Email</title>
+</head>
+<body style="font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f4f7f6; margin: 0; padding: 0; color: #333333;">
+  <div style="max-width: 600px; margin: 40px auto; background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); border: 1px solid #e1e8e5;">
+    <!-- Header -->
+    <div style="background: linear-gradient(135deg, #60BB46 0%, #469031 100%); padding: 32px 24px; text-align: center;">
+      <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">Verify Your Email</h1>
+    </div>
+    
+    <!-- Content -->
+    <div style="padding: 40px 32px; line-height: 1.6;">
+      <p style="margin-top: 0; font-size: 16px; color: #4b5563;">Hi {{ username }},</p>
+      <p style="font-size: 16px; color: #4b5563;">Thank you for registering an account on <strong>Inventory Management API</strong>! To complete your registration and activate your account, please verify your email address by clicking the button below.</p>
+      
+      <div style="text-align: center; margin: 36px 0;">
+        <a href="{{ verification_url }}" target="_blank" style="background-color: #60BB46; color: #ffffff; padding: 14px 28px; font-size: 16px; font-weight: 600; text-decoration: none; border-radius: 8px; display: inline-block; box-shadow: 0 4px 6px rgba(96, 187, 70, 0.2); transition: all 0.2s ease;">
+          Verify Email Address
+        </a>
+      </div>
+      
+      <p style="font-size: 14px; color: #9ca3af; margin-bottom: 0;">If the button doesn't work, copy and paste this URL into your browser:</p>
+      <p style="font-size: 14px; color: #60BB46; word-break: break-all; margin-top: 8px;"><a href="{{ verification_url }}" style="color: #60BB46; text-decoration: none;">{{ verification_url }}</a></p>
+      
+      <hr style="border: 0; border-top: 1px solid #e5e7eb; margin: 32px 0;">
+      
+      <p style="font-size: 12px; color: #9ca3af; line-height: 1.4; margin: 0;">This link is valid for 24 hours. If you did not create an account, no further action is required.</p>
+    </div>
+    
+    <!-- Footer -->
+    <div style="background-color: #f9fafb; padding: 24px; text-align: center; border-top: 1px solid #f3f4f6;">
+      <p style="margin: 0; font-size: 12px; color: #9ca3af;">&copy; 2026 Inventory Management API. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>

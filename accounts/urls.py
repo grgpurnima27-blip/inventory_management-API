@@ -7,6 +7,9 @@ from .views import (
     MeView,
     ChangePasswordView,
     LogoutView,
+    VerifyEmailView,
+    ForgotPasswordView,
+    ResetPasswordView,
 )
 
 from .jwt_views import (
@@ -53,6 +56,21 @@ urlpatterns = [
         'logout/',                
         LogoutView.as_view(),
         name='logout'
+    ),
+    path(
+        'verify-email/<str:token>/',
+        VerifyEmailView.as_view(),
+        name='verify-email'
+    ),
+    path(
+        'forgot-password/',
+        ForgotPasswordView.as_view(),
+        name='forgot-password'
+    ),
+    path(
+        'reset-password/<str:token>/',
+        ResetPasswordView.as_view(),
+        name='reset-password'
     ),
 
 ]
