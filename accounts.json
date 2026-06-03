@@ -1,0 +1,464 @@
+[
+{
+  "model": "accounts.customuser",
+  "pk": 1,
+  "fields": {
+    "password": "pbkdf2_sha256$1200000$xHcI9UQS05xJA2JTuNI7ZM$d9/q4XsnfBeBgXIc1nQ5IWrgpjGRuHh19tZhtq1vfaw=",
+    "last_login": null,
+    "is_superuser": true,
+    "username": "admin",
+    "first_name": "",
+    "last_name": "",
+    "email": "admin@example.com",
+    "is_staff": true,
+    "is_active": true,
+    "date_joined": "2026-05-24T11:01:04.024Z",
+    "role": "admin",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "accounts.customuser",
+  "pk": 2,
+  "fields": {
+    "password": "pbkdf2_sha256$1200000$rFmQrQCNuWjCJS8oFGpv98$0bLMPxvStzCf20AjSv575dGLPqrnbGPoFap70yJDJSI=",
+    "last_login": "2026-05-26T09:53:19.796Z",
+    "is_superuser": true,
+    "username": "admin1",
+    "first_name": "",
+    "last_name": "",
+    "email": "admin1@gmail.com",
+    "is_staff": true,
+    "is_active": true,
+    "date_joined": "2026-05-24T11:04:50.021Z",
+    "role": "admin",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "accounts.customuser",
+  "pk": 3,
+  "fields": {
+    "password": "pbkdf2_sha256$1200000$fFkG7NIOI6MJ48iqfoo5OX$TlKtrBzWUQxlYM/NZRt0/04loQQ4/lKtiXWH3rWlfwk=",
+    "last_login": null,
+    "is_superuser": false,
+    "username": "manjil1",
+    "first_name": "",
+    "last_name": "",
+    "email": "manjilrajpanta.cs21@bmsce.ac.in",
+    "is_staff": false,
+    "is_active": true,
+    "date_joined": "2026-05-24T11:16:49.468Z",
+    "role": "customer",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "accounts.customuser",
+  "pk": 4,
+  "fields": {
+    "password": "pbkdf2_sha256$1200000$VLu73RSKyy9VfFIvxUmo7F$BaH2iDcM8JEFlRQ8wtGNk3EF8Fso9TVFM2sjtu465FM=",
+    "last_login": null,
+    "is_superuser": true,
+    "username": "purnimagrg",
+    "first_name": "",
+    "last_name": "",
+    "email": "grgpurnima27@gmail.com",
+    "is_staff": true,
+    "is_active": true,
+    "date_joined": "2026-05-25T07:34:34.425Z",
+    "role": "admin",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "accounts.customuser",
+  "pk": 5,
+  "fields": {
+    "password": "pbkdf2_sha256$1200000$5incpOxyUJ6ZDrY7b2ZYH3$8To0/0plJnbM1M+ZIO5WVlxZRQIK+4YV9GvS4lrDPao=",
+    "last_login": null,
+    "is_superuser": true,
+    "username": "Purnimagg",
+    "first_name": "",
+    "last_name": "",
+    "email": "grgpurnima27@gmail.com",
+    "is_staff": true,
+    "is_active": true,
+    "date_joined": "2026-05-25T09:17:06.117Z",
+    "role": "admin",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "accounts.customuser",
+  "pk": 6,
+  "fields": {
+    "password": "pbkdf2_sha256$1200000$46UXG6HB2vOtkWvuOPglsU$WX/RB1wPJVKm2+HpocBEdPxnqt59Q7tc+sbstSA9rGY=",
+    "last_login": null,
+    "is_superuser": true,
+    "username": "purnimadd",
+    "first_name": "",
+    "last_name": "",
+    "email": "grgpurnima27@gmail.com",
+    "is_staff": true,
+    "is_active": true,
+    "date_joined": "2026-05-25T09:43:13.551Z",
+    "role": "admin",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "accounts.customuser",
+  "pk": 7,
+  "fields": {
+    "password": "pbkdf2_sha256$1200000$hoXZEwO3jyjARB9NKrkmpQ$S5I48AMv1FLOzRyFoKe9vgTvAAFc5o1gNQKgvXGw9Ck=",
+    "last_login": null,
+    "is_superuser": true,
+    "username": "punu",
+    "first_name": "",
+    "last_name": "",
+    "email": "grgpurnima27@gmail.com",
+    "is_staff": true,
+    "is_active": true,
+    "date_joined": "2026-05-25T09:50:07.909Z",
+    "role": "admin",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "accounts.customuser",
+  "pk": 8,
+  "fields": {
+    "password": "pbkdf2_sha256$1200000$ZT06ch8YdWinMKq3Odg0n0$jsgpjemL69sMrVQMJRHB18y7rCD1parCwNjmS27tN/o=",
+    "last_login": null,
+    "is_superuser": true,
+    "username": "maya",
+    "first_name": "",
+    "last_name": "",
+    "email": "maya@gmail.com",
+    "is_staff": true,
+    "is_active": true,
+    "date_joined": "2026-05-25T09:53:37.675Z",
+    "role": "admin",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "accounts.customuser",
+  "pk": 9,
+  "fields": {
+    "password": "pbkdf2_sha256$1200000$maEEvhNfJImR7DNb0RX286$7NCO6CtGeFMm85Luk11JvBueWQdCp/fBweOwv8Ed6ZA=",
+    "last_login": null,
+    "is_superuser": true,
+    "username": "admin11",
+    "first_name": "",
+    "last_name": "",
+    "email": "admin@gmail.com",
+    "is_staff": true,
+    "is_active": true,
+    "date_joined": "2026-05-25T10:08:16.836Z",
+    "role": "admin",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "accounts.customuser",
+  "pk": 10,
+  "fields": {
+    "password": "pbkdf2_sha256$1200000$e7bG3XMjIgsHI2cAmEsNxf$vzDvrwUWyw082fAEqcO9HLKH0KZ1qFb8HlmghtgfeQM=",
+    "last_login": null,
+    "is_superuser": false,
+    "username": "manjil12",
+    "first_name": "",
+    "last_name": "",
+    "email": "manjilpanta828@gmail.com",
+    "is_staff": false,
+    "is_active": true,
+    "date_joined": "2026-05-25T11:19:03.568Z",
+    "role": "customer",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "accounts.customuser",
+  "pk": 11,
+  "fields": {
+    "password": "pbkdf2_sha256$1200000$yKXW0W9hyD2xHdTusgnEvA$5MYBEEwO3GieFORO+1oT6qY5JWYfWP+hKsopa1ENM2s=",
+    "last_login": null,
+    "is_superuser": false,
+    "username": "manjil1234",
+    "first_name": "",
+    "last_name": "",
+    "email": "manjil@gmail.com",
+    "is_staff": false,
+    "is_active": true,
+    "date_joined": "2026-05-26T07:08:26.167Z",
+    "role": "customer",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "accounts.customuser",
+  "pk": 12,
+  "fields": {
+    "password": "pbkdf2_sha256$1200000$hu8hdLf1eZSNPnhGARNgPw$ImCfmf+dKv2kOtV6BXVMwztsdZiHJpmqhrPHYAlviT8=",
+    "last_login": null,
+    "is_superuser": false,
+    "username": "Rupa",
+    "first_name": "",
+    "last_name": "",
+    "email": "test@gmail.com",
+    "is_staff": false,
+    "is_active": true,
+    "date_joined": "2026-05-26T08:33:16.535Z",
+    "role": "customer",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "accounts.customuser",
+  "pk": 13,
+  "fields": {
+    "password": "pbkdf2_sha256$1200000$xdJSVfyYWeO8ypOngSodtn$wZ0ZVF4rv5kvyIQA4aiJU5i5VScTXZNHLWTKDcGwwms=",
+    "last_login": null,
+    "is_superuser": false,
+    "username": "manjil123",
+    "first_name": "",
+    "last_name": "",
+    "email": "manjil1@gmail.com",
+    "is_staff": false,
+    "is_active": true,
+    "date_joined": "2026-06-02T06:42:16.022Z",
+    "role": "customer",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "accounts.customuser",
+  "pk": 14,
+  "fields": {
+    "password": "pbkdf2_sha256$1200000$dbVfTTzfpqd6CaF8F9QCz7$gv6bpZaxT8BEUcGB0Zl4Nq4EhBQ87dCgf2VsXQ23zWY=",
+    "last_login": null,
+    "is_superuser": false,
+    "username": "prisca",
+    "first_name": "",
+    "last_name": "",
+    "email": "prisca@gmail.com",
+    "is_staff": false,
+    "is_active": true,
+    "date_joined": "2026-06-02T08:22:14.204Z",
+    "role": "customer",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
+  "model": "accounts.profile",
+  "pk": 1,
+  "fields": {
+    "user": 1,
+    "avatar": null,
+    "avatar_url": "https://ui-avatars.com/api/?name=admin&size=200&background=60BB46&color=ffffff&bold=true&rounded=true",
+    "phone": null,
+    "address": null,
+    "city": null,
+    "created_at": "2026-05-31T12:08:26.888Z",
+    "updated_at": "2026-05-31T12:08:26.888Z"
+  }
+},
+{
+  "model": "accounts.profile",
+  "pk": 2,
+  "fields": {
+    "user": 2,
+    "avatar": null,
+    "avatar_url": "https://ui-avatars.com/api/?name=admin1&size=200&background=60BB46&color=ffffff&bold=true&rounded=true",
+    "phone": null,
+    "address": null,
+    "city": null,
+    "created_at": "2026-05-31T12:08:26.910Z",
+    "updated_at": "2026-05-31T12:08:26.910Z"
+  }
+},
+{
+  "model": "accounts.profile",
+  "pk": 3,
+  "fields": {
+    "user": 3,
+    "avatar": null,
+    "avatar_url": "https://ui-avatars.com/api/?name=manjil1&size=200&background=60BB46&color=ffffff&bold=true&rounded=true",
+    "phone": null,
+    "address": null,
+    "city": null,
+    "created_at": "2026-05-31T12:08:26.918Z",
+    "updated_at": "2026-05-31T12:08:26.918Z"
+  }
+},
+{
+  "model": "accounts.profile",
+  "pk": 4,
+  "fields": {
+    "user": 4,
+    "avatar": null,
+    "avatar_url": "https://ui-avatars.com/api/?name=purnimagrg&size=200&background=60BB46&color=ffffff&bold=true&rounded=true",
+    "phone": null,
+    "address": null,
+    "city": null,
+    "created_at": "2026-05-31T12:08:26.927Z",
+    "updated_at": "2026-05-31T12:08:26.927Z"
+  }
+},
+{
+  "model": "accounts.profile",
+  "pk": 5,
+  "fields": {
+    "user": 5,
+    "avatar": null,
+    "avatar_url": "https://ui-avatars.com/api/?name=Purnimagg&size=200&background=60BB46&color=ffffff&bold=true&rounded=true",
+    "phone": null,
+    "address": null,
+    "city": null,
+    "created_at": "2026-05-31T12:08:26.929Z",
+    "updated_at": "2026-05-31T12:08:26.929Z"
+  }
+},
+{
+  "model": "accounts.profile",
+  "pk": 6,
+  "fields": {
+    "user": 6,
+    "avatar": null,
+    "avatar_url": "https://ui-avatars.com/api/?name=purnimadd&size=200&background=60BB46&color=ffffff&bold=true&rounded=true",
+    "phone": null,
+    "address": null,
+    "city": null,
+    "created_at": "2026-05-31T12:08:26.952Z",
+    "updated_at": "2026-05-31T12:08:26.952Z"
+  }
+},
+{
+  "model": "accounts.profile",
+  "pk": 7,
+  "fields": {
+    "user": 7,
+    "avatar": null,
+    "avatar_url": "https://ui-avatars.com/api/?name=punu&size=200&background=60BB46&color=ffffff&bold=true&rounded=true",
+    "phone": null,
+    "address": null,
+    "city": null,
+    "created_at": "2026-05-31T12:08:26.985Z",
+    "updated_at": "2026-05-31T12:08:26.985Z"
+  }
+},
+{
+  "model": "accounts.profile",
+  "pk": 8,
+  "fields": {
+    "user": 8,
+    "avatar": null,
+    "avatar_url": "https://ui-avatars.com/api/?name=maya&size=200&background=60BB46&color=ffffff&bold=true&rounded=true",
+    "phone": null,
+    "address": null,
+    "city": null,
+    "created_at": "2026-05-31T12:08:27.008Z",
+    "updated_at": "2026-05-31T12:08:27.008Z"
+  }
+},
+{
+  "model": "accounts.profile",
+  "pk": 9,
+  "fields": {
+    "user": 9,
+    "avatar": null,
+    "avatar_url": "https://ui-avatars.com/api/?name=admin11&size=200&background=60BB46&color=ffffff&bold=true&rounded=true",
+    "phone": null,
+    "address": null,
+    "city": null,
+    "created_at": "2026-05-31T12:08:27.037Z",
+    "updated_at": "2026-05-31T12:08:27.037Z"
+  }
+},
+{
+  "model": "accounts.profile",
+  "pk": 10,
+  "fields": {
+    "user": 10,
+    "avatar": null,
+    "avatar_url": "https://ui-avatars.com/api/?name=manjil12&size=200&background=60BB46&color=ffffff&bold=true&rounded=true",
+    "phone": null,
+    "address": null,
+    "city": null,
+    "created_at": "2026-05-31T12:08:27.058Z",
+    "updated_at": "2026-05-31T12:08:27.059Z"
+  }
+},
+{
+  "model": "accounts.profile",
+  "pk": 11,
+  "fields": {
+    "user": 11,
+    "avatar": null,
+    "avatar_url": "https://ui-avatars.com/api/?name=manjil1234&size=200&background=60BB46&color=ffffff&bold=true&rounded=true",
+    "phone": null,
+    "address": null,
+    "city": null,
+    "created_at": "2026-05-31T12:08:27.080Z",
+    "updated_at": "2026-05-31T12:08:27.080Z"
+  }
+},
+{
+  "model": "accounts.profile",
+  "pk": 12,
+  "fields": {
+    "user": 12,
+    "avatar": null,
+    "avatar_url": "https://ui-avatars.com/api/?name=Rupa&size=200&background=60BB46&color=ffffff&bold=true&rounded=true",
+    "phone": null,
+    "address": null,
+    "city": null,
+    "created_at": "2026-05-31T12:08:27.092Z",
+    "updated_at": "2026-05-31T12:08:27.092Z"
+  }
+},
+{
+  "model": "accounts.profile",
+  "pk": 13,
+  "fields": {
+    "user": 13,
+    "avatar": null,
+    "avatar_url": null,
+    "phone": null,
+    "address": null,
+    "city": null,
+    "created_at": "2026-06-02T06:42:17.696Z",
+    "updated_at": "2026-06-02T06:42:17.696Z"
+  }
+},
+{
+  "model": "accounts.profile",
+  "pk": 14,
+  "fields": {
+    "user": 14,
+    "avatar": null,
+    "avatar_url": null,
+    "phone": null,
+    "address": null,
+    "city": null,
+    "created_at": "2026-06-02T08:22:14.981Z",
+    "updated_at": "2026-06-02T08:22:14.981Z"
+  }
+}
+]

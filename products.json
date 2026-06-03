@@ -1,0 +1,145 @@
+[
+{
+  "model": "products.product",
+  "pk": 1,
+  "fields": {
+    "name": "Dell Inspiron 15",
+    "sku": "DELL-INS-15-001",
+    "category": "Electronics",
+    "price": "85000.00",
+    "image": "image/upload/products/product_1",
+    "created_at": "2026-05-24T11:21:37.773Z",
+    "updated_at": "2026-05-26T10:58:29.696Z"
+  }
+},
+{
+  "model": "products.product",
+  "pk": 2,
+  "fields": {
+    "name": "Logitech Wireless Mouse",
+    "sku": "LOG-WM-002",
+    "category": "Accessories",
+    "price": "2499.99",
+    "image": "image/upload/products/product_2",
+    "created_at": "2026-05-24T11:22:09.918Z",
+    "updated_at": "2026-05-26T10:58:29.696Z"
+  }
+},
+{
+  "model": "products.product",
+  "pk": 3,
+  "fields": {
+    "name": "Mechanical Keyboard RGB",
+    "sku": "KB-MECH-RGB-003",
+    "category": "Accessories",
+    "price": "4499.99",
+    "image": "image/upload/products/product_3",
+    "created_at": "2026-05-24T11:22:47.270Z",
+    "updated_at": "2026-05-26T10:58:29.696Z"
+  }
+},
+{
+  "model": "products.product",
+  "pk": 4,
+  "fields": {
+    "name": "LG 24 inch FHD Monitor",
+    "sku": "LG-MON-24-004",
+    "category": "Electronics",
+    "price": "32000.00",
+    "image": "image/upload/products/product_4",
+    "created_at": "2026-05-24T11:23:33.356Z",
+    "updated_at": "2026-05-26T10:58:29.696Z"
+  }
+},
+{
+  "model": "products.product",
+  "pk": 5,
+  "fields": {
+    "name": "Sony WH-1000XM4",
+    "sku": "Sony WH-1000XM4",
+    "category": "Audio",
+    "price": "12000.00",
+    "image": "image/upload/products/product_5",
+    "created_at": "2026-05-24T11:26:31.277Z",
+    "updated_at": "2026-05-26T10:58:29.696Z"
+  }
+},
+{
+  "model": "products.product",
+  "pk": 6,
+  "fields": {
+    "name": "Anker 7-Port USB Hub",
+    "sku": "ANK-USB-7P-006",
+    "category": "Accessories",
+    "price": "1800.00",
+    "image": "image/upload/products/product_6",
+    "created_at": "2026-05-24T11:27:14.942Z",
+    "updated_at": "2026-05-26T10:58:29.696Z"
+  }
+},
+{
+  "model": "products.product",
+  "pk": 7,
+  "fields": {
+    "name": "Hp omen 15",
+    "sku": "23",
+    "category": "Laptop",
+    "price": "1500.00",
+    "image": "image/upload/products/product_7",
+    "created_at": "2026-05-25T07:30:31.397Z",
+    "updated_at": "2026-05-26T10:58:29.696Z"
+  }
+},
+{
+  "model": "products.product",
+  "pk": 8,
+  "fields": {
+    "name": "Samsung 1TB SSD",
+    "sku": "SAM-SSD-1TB-008",
+    "category": "Storage",
+    "price": "9500.00",
+    "image": "image/upload/products/product_8",
+    "created_at": "2026-05-25T08:18:42.917Z",
+    "updated_at": "2026-05-26T10:58:29.696Z"
+  }
+},
+{
+  "model": "products.product",
+  "pk": 9,
+  "fields": {
+    "name": "Hyper x",
+    "sku": "PROD-01",
+    "category": "nvme ssd",
+    "price": "2200.00",
+    "image": "image/upload/products/product_9",
+    "created_at": "2026-05-25T08:29:23.844Z",
+    "updated_at": "2026-05-26T10:58:29.696Z"
+  }
+},
+{
+  "model": "products.product",
+  "pk": 10,
+  "fields": {
+    "name": "apple gift card",
+    "sku": "AFK-02",
+    "category": "Gift card",
+    "price": "15.00",
+    "image": "image/upload/products/product_10",
+    "created_at": "2026-05-25T08:31:07.111Z",
+    "updated_at": "2026-05-26T10:58:29.696Z"
+  }
+},
+{
+  "model": "products.product",
+  "pk": 11,
+  "fields": {
+    "name": "ASUS ROG Strix G15",
+    "sku": "ASUS-ROG-G15-009",
+    "category": "Electronics",
+    "price": "185000.00",
+    "image": "image/upload/products/product_11",
+    "created_at": "2026-05-25T09:38:40.280Z",
+    "updated_at": "2026-05-26T10:58:29.696Z"
+  }
+}
+]
