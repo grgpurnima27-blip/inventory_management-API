@@ -1,0 +1,376 @@
+[
+{
+  "model": "orders.order",
+  "pk": 1,
+  "fields": {
+    "user": 3,
+    "customer_name": "Manjil",
+    "delivery_city": "Kathmandu",
+    "status": "completed",
+    "payment_method": "cod",
+    "total_price": "12000.00",
+    "original_amount": "0.00",
+    "discount_amount": "0.00",
+    "payment_status": "pending",
+    "payment_transaction_id": null,
+    "processed_at": null,
+    "shipped_at": null,
+    "completed_at": null,
+    "cancelled_at": null,
+    "paid_at": null,
+    "created_at": "2026-05-25T06:47:36.207Z",
+    "updated_at": "2026-05-25T10:56:04.536Z"
+  }
+},
+{
+  "model": "orders.order",
+  "pk": 2,
+  "fields": {
+    "user": 2,
+    "customer_name": "Purnima",
+    "delivery_city": "Kathmandu",
+    "status": "pending",
+    "payment_method": "cod",
+    "total_price": "96000.00",
+    "original_amount": "0.00",
+    "discount_amount": "0.00",
+    "payment_status": "pending",
+    "payment_transaction_id": null,
+    "processed_at": null,
+    "shipped_at": null,
+    "completed_at": null,
+    "cancelled_at": null,
+    "paid_at": null,
+    "created_at": "2026-05-25T11:43:40.875Z",
+    "updated_at": "2026-05-25T11:43:40.900Z"
+  }
+},
+{
+  "model": "orders.order",
+  "pk": 3,
+  "fields": {
+    "user": 10,
+    "customer_name": "Manjil",
+    "delivery_city": "Kathmandu",
+    "status": "completed",
+    "payment_method": "cod",
+    "total_price": "15.00",
+    "original_amount": "0.00",
+    "discount_amount": "0.00",
+    "payment_status": "pending",
+    "payment_transaction_id": null,
+    "processed_at": null,
+    "shipped_at": null,
+    "completed_at": null,
+    "cancelled_at": null,
+    "paid_at": null,
+    "created_at": "2026-05-26T07:05:48.415Z",
+    "updated_at": "2026-05-26T07:05:48.415Z"
+  }
+},
+{
+  "model": "orders.order",
+  "pk": 4,
+  "fields": {
+    "user": 12,
+    "customer_name": "Rupa",
+    "delivery_city": "Kathmandu",
+    "status": "completed",
+    "payment_method": "cod",
+    "total_price": "85000.00",
+    "original_amount": "0.00",
+    "discount_amount": "0.00",
+    "payment_status": "pending",
+    "payment_transaction_id": null,
+    "processed_at": null,
+    "shipped_at": null,
+    "completed_at": null,
+    "cancelled_at": null,
+    "paid_at": null,
+    "created_at": "2026-05-26T09:34:10.510Z",
+    "updated_at": "2026-05-26T09:34:10.510Z"
+  }
+},
+{
+  "model": "orders.order",
+  "pk": 5,
+  "fields": {
+    "user": 12,
+    "customer_name": "Rupa",
+    "delivery_city": "Pokhara",
+    "status": "completed",
+    "payment_method": "cod",
+    "total_price": "7499.97",
+    "original_amount": "0.00",
+    "discount_amount": "0.00",
+    "payment_status": "pending",
+    "payment_transaction_id": null,
+    "processed_at": null,
+    "shipped_at": null,
+    "completed_at": null,
+    "cancelled_at": null,
+    "paid_at": null,
+    "created_at": "2026-05-26T09:58:41.583Z",
+    "updated_at": "2026-05-26T09:58:41.583Z"
+  }
+},
+{
+  "model": "orders.order",
+  "pk": 6,
+  "fields": {
+    "user": 11,
+    "customer_name": "Manjil",
+    "delivery_city": "Kathmandu",
+    "status": "completed",
+    "payment_method": "cod",
+    "total_price": "32000.00",
+    "original_amount": "0.00",
+    "discount_amount": "0.00",
+    "payment_status": "pending",
+    "payment_transaction_id": null,
+    "processed_at": null,
+    "shipped_at": null,
+    "completed_at": null,
+    "cancelled_at": null,
+    "paid_at": null,
+    "created_at": "2026-05-26T10:18:16.206Z",
+    "updated_at": "2026-05-26T10:18:16.206Z"
+  }
+},
+{
+  "model": "orders.order",
+  "pk": 7,
+  "fields": {
+    "user": 11,
+    "customer_name": "Purnima",
+    "delivery_city": "Kathmandu",
+    "status": "completed",
+    "payment_method": "cod",
+    "total_price": "15.00",
+    "original_amount": "0.00",
+    "discount_amount": "0.00",
+    "payment_status": "pending",
+    "payment_transaction_id": null,
+    "processed_at": null,
+    "shipped_at": null,
+    "completed_at": null,
+    "cancelled_at": null,
+    "paid_at": null,
+    "created_at": "2026-05-26T10:21:25.443Z",
+    "updated_at": "2026-05-26T10:21:25.443Z"
+  }
+},
+{
+  "model": "orders.order",
+  "pk": 8,
+  "fields": {
+    "user": 12,
+    "customer_name": "Rupa",
+    "delivery_city": "Lalitpur",
+    "status": "completed",
+    "payment_method": "cod",
+    "total_price": "96000.00",
+    "original_amount": "0.00",
+    "discount_amount": "0.00",
+    "payment_status": "pending",
+    "payment_transaction_id": null,
+    "processed_at": null,
+    "shipped_at": null,
+    "completed_at": null,
+    "cancelled_at": null,
+    "paid_at": null,
+    "created_at": "2026-05-26T11:02:06.676Z",
+    "updated_at": "2026-05-26T11:02:06.676Z"
+  }
+},
+{
+  "model": "orders.order",
+  "pk": 9,
+  "fields": {
+    "user": 12,
+    "customer_name": "Rupa",
+    "delivery_city": "Pokhara",
+    "status": "completed",
+    "payment_method": "cod",
+    "total_price": "2880.00",
+    "original_amount": "3600.00",
+    "discount_amount": "720.00",
+    "payment_status": "pending",
+    "payment_transaction_id": null,
+    "processed_at": null,
+    "shipped_at": null,
+    "completed_at": null,
+    "cancelled_at": null,
+    "paid_at": null,
+    "created_at": "2026-05-31T07:34:33.556Z",
+    "updated_at": "2026-05-31T07:34:33.556Z"
+  }
+},
+{
+  "model": "orders.order",
+  "pk": 10,
+  "fields": {
+    "user": 12,
+    "customer_name": "Rupa",
+    "delivery_city": "Kathmandu",
+    "status": "completed",
+    "payment_method": "cod",
+    "total_price": "12000.00",
+    "original_amount": "12000.00",
+    "discount_amount": "0.00",
+    "payment_status": "pending",
+    "payment_transaction_id": null,
+    "processed_at": null,
+    "shipped_at": null,
+    "completed_at": null,
+    "cancelled_at": null,
+    "paid_at": null,
+    "created_at": "2026-06-01T07:52:10.443Z",
+    "updated_at": "2026-06-01T07:52:10.443Z"
+  }
+},
+{
+  "model": "orders.order",
+  "pk": 11,
+  "fields": {
+    "user": 14,
+    "customer_name": "prisca",
+    "delivery_city": "Pokhara",
+    "status": "pending",
+    "payment_method": "cod",
+    "total_price": "2499.99",
+    "original_amount": "2499.99",
+    "discount_amount": "0.00",
+    "payment_status": "pending",
+    "payment_transaction_id": null,
+    "processed_at": null,
+    "shipped_at": null,
+    "completed_at": null,
+    "cancelled_at": null,
+    "paid_at": null,
+    "created_at": "2026-06-02T08:24:26.477Z",
+    "updated_at": "2026-06-02T08:24:26.479Z"
+  }
+},
+{
+  "model": "orders.orderitem",
+  "pk": 1,
+  "fields": {
+    "order": 1,
+    "product": 5,
+    "warehouse": 3,
+    "quantity": 1,
+    "unit_price": "12000.00"
+  }
+},
+{
+  "model": "orders.orderitem",
+  "pk": 2,
+  "fields": {
+    "order": 2,
+    "product": 4,
+    "warehouse": 1,
+    "quantity": 3,
+    "unit_price": "32000.00"
+  }
+},
+{
+  "model": "orders.orderitem",
+  "pk": 3,
+  "fields": {
+    "order": 3,
+    "product": 10,
+    "warehouse": 1,
+    "quantity": 1,
+    "unit_price": "15.00"
+  }
+},
+{
+  "model": "orders.orderitem",
+  "pk": 4,
+  "fields": {
+    "order": 4,
+    "product": 1,
+    "warehouse": 3,
+    "quantity": 1,
+    "unit_price": "85000.00"
+  }
+},
+{
+  "model": "orders.orderitem",
+  "pk": 5,
+  "fields": {
+    "order": 5,
+    "product": 2,
+    "warehouse": 2,
+    "quantity": 3,
+    "unit_price": "2499.99"
+  }
+},
+{
+  "model": "orders.orderitem",
+  "pk": 6,
+  "fields": {
+    "order": 6,
+    "product": 4,
+    "warehouse": 1,
+    "quantity": 1,
+    "unit_price": "32000.00"
+  }
+},
+{
+  "model": "orders.orderitem",
+  "pk": 7,
+  "fields": {
+    "order": 7,
+    "product": 10,
+    "warehouse": 1,
+    "quantity": 1,
+    "unit_price": "15.00"
+  }
+},
+{
+  "model": "orders.orderitem",
+  "pk": 8,
+  "fields": {
+    "order": 8,
+    "product": 4,
+    "warehouse": 3,
+    "quantity": 3,
+    "unit_price": "32000.00"
+  }
+},
+{
+  "model": "orders.orderitem",
+  "pk": 9,
+  "fields": {
+    "order": 9,
+    "product": 6,
+    "warehouse": 2,
+    "quantity": 2,
+    "unit_price": "1800.00"
+  }
+},
+{
+  "model": "orders.orderitem",
+  "pk": 10,
+  "fields": {
+    "order": 10,
+    "product": 5,
+    "warehouse": 1,
+    "quantity": 1,
+    "unit_price": "12000.00"
+  }
+},
+{
+  "model": "orders.orderitem",
+  "pk": 11,
+  "fields": {
+    "order": 11,
+    "product": 2,
+    "warehouse": 2,
+    "quantity": 1,
+    "unit_price": "2499.99"
+  }
+}
+]

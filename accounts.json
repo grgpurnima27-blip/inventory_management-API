@@ -266,6 +266,25 @@
   }
 },
 {
+  "model": "accounts.customuser",
+  "pk": 15,
+  "fields": {
+    "password": "pbkdf2_sha256$1200000$FtDiRsb0vmla3N78vDIITj$0gUfDmxnic73MtmVweFKfIES1tCWfl/kPgkB9dMHew4=",
+    "last_login": "2026-06-03T07:00:47.736Z",
+    "is_superuser": true,
+    "username": "admin123",
+    "first_name": "",
+    "last_name": "",
+    "email": "grgpurnima27@gmail.com",
+    "is_staff": true,
+    "is_active": true,
+    "date_joined": "2026-06-03T06:56:20.823Z",
+    "role": "admin",
+    "groups": [],
+    "user_permissions": []
+  }
+},
+{
   "model": "accounts.profile",
   "pk": 1,
   "fields": {
