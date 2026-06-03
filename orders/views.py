@@ -4,6 +4,7 @@ from io import BytesIO
 from django.db import transaction
 from django.utils import timezone
 from django.shortcuts import get_object_or_404
+from django.core.exceptions import ValidationError
 
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -153,13 +154,32 @@ class OrderViewSet(viewsets.ModelViewSet):
         
         # Calculate totals
         original_amount = 0
-        discount_amount = float(data.get('discount_amount', 0))
+        discount_val = data.get('discount_amount', 0)
+        if discount_val in [None, '']:
+            discount_val = 0
+        try:
+            discount_amount = float(discount_val)
+        except (ValueError, TypeError):
+            return Response(
+                {'error': 'discount_amount must be a valid number.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         # Validate and process items
         order_items = []
         for item in items_data:
             product_id = item.get('product')
-            quantity = int(item.get('quantity', 1))
+            quantity_val = item.get('quantity', 1)
+            if quantity_val in [None, '']:
+                quantity_val = 1
+            
+            try:
+                quantity = int(quantity_val)
+            except (ValueError, TypeError):
+                return Response(
+                    {'error': f'Quantity must be a valid integer for product ID {product_id}.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             
             if not product_id:
                 return Response(
@@ -174,7 +194,12 @@ class OrderViewSet(viewsets.ModelViewSet):
                 )
             
             try:
-                product = Product.objects.get(id=product_id)
+                product = Product.objects.get(id=int(product_id))
+            except (ValueError, TypeError):
+                return Response(
+                    {'error': f'Invalid product ID: {product_id}.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
             except Product.DoesNotExist:
                 return Response(
                     {'error': f'Product with id {product_id} does not exist.'},
@@ -185,7 +210,12 @@ class OrderViewSet(viewsets.ModelViewSet):
             warehouse_id = item.get('warehouse')
             if warehouse_id:
                 try:
-                    warehouse = Warehouse.objects.get(id=warehouse_id)
+                    warehouse = Warehouse.objects.get(id=int(warehouse_id))
+                except (ValueError, TypeError):
+                    return Response(
+                        {'error': f'Invalid warehouse ID: {warehouse_id}.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
                 except Warehouse.DoesNotExist:
                     return Response(
                         {'error': f'Warehouse with id {warehouse_id} does not exist.'},
@@ -227,17 +257,24 @@ class OrderViewSet(viewsets.ModelViewSet):
         
         total_price = original_amount - discount_amount
         
-        # Create order
-        order = Order.objects.create(
-            user=request.user,
-            customer_name=data.get('customer_name'),
-            delivery_city=data.get('delivery_city', 'Kathmandu'),
-            payment_method=payment_method,
-            original_amount=original_amount,
-            discount_amount=discount_amount,
-            total_price=total_price,
-            status=Order.STATUS_PENDING
-        )
+        # Create order with validation catching
+        try:
+            order = Order.objects.create(
+                user=request.user,
+                customer_name=data.get('customer_name'),
+                delivery_city=data.get('delivery_city', 'Kathmandu'),
+                payment_method=payment_method,
+                original_amount=original_amount,
+                discount_amount=discount_amount,
+                total_price=total_price,
+                status=Order.STATUS_PENDING
+            )
+        except ValidationError as e:
+            error_msg = e.message_dict if hasattr(e, 'message_dict') else str(e)
+            return Response(
+                {'error': error_msg},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
         # Create order items and update inventory
         for item_data in order_items:
