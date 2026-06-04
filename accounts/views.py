@@ -28,21 +28,35 @@ from .emails import send_verification_email, send_password_reset_email
 User = get_user_model()
 
 
-@extend_schema(tags=['auth'], request=RegisterSerializer, responses=RegisterSerializer)
+@extend_schema(tags=['auth'], request=RegisterSerializer)
 class RegisterView(generics.CreateAPIView):
-    serializer_class = RegisterSerializer
+    serializer_class   = RegisterSerializer
     permission_classes = [AllowAny]
 
-    def perform_create(self, serializer):
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         user = serializer.save()
+
+        # ✅ Generate token and send verification email
         token = generate_token(user.id, 'verify_email')
         send_verification_email(user, token)
+
+        return Response(
+            {
+                'message': (
+                    f'Registration successful! '
+                    f'Please check {user.email} to verify your account before logging in.'
+                )
+            },
+            status=status.HTTP_201_CREATED
+        )
 
 
 @extend_schema(tags=['auth'], request=LoginSerializer)
 class LoginView(APIView):
     permission_classes = [AllowAny]
-    serializer_class = LoginSerializer
+    serializer_class   = LoginSerializer
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
@@ -53,7 +67,7 @@ class LoginView(APIView):
 @extend_schema(tags=['auth'], request=AdminLoginSerializer)
 class AdminLoginView(APIView):
     permission_classes = [AllowAny]
-    serializer_class = AdminLoginSerializer
+    serializer_class   = AdminLoginSerializer
 
     def post(self, request):
         serializer = AdminLoginSerializer(data=request.data)
@@ -68,17 +82,16 @@ class AdminLoginView(APIView):
 )
 class MeView(APIView):
     permission_classes = [IsAuthenticated]
-    serializer_class = UserSerializer
+    serializer_class   = UserSerializer
 
     def get(self, request):
-        user = request.user
-        serializer = UserSerializer(user)
+        serializer = UserSerializer(request.user)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class ChangePasswordView(APIView):
     permission_classes = [IsAuthenticated]
-    serializer_class = ChangePasswordSerializer
+    serializer_class   = ChangePasswordSerializer
 
     @extend_schema(
         summary='Change Password',
@@ -106,7 +119,7 @@ class ChangePasswordView(APIView):
 
 class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
-    serializer_class = LogoutSerializer
+    serializer_class   = LogoutSerializer
 
     @extend_schema(
         summary='Logout',
@@ -138,8 +151,8 @@ class LogoutView(APIView):
 
 class ProfileView(APIView):
     permission_classes = [IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser, JSONParser]
-    serializer_class = ProfileSerializer
+    parser_classes     = [MultiPartParser, FormParser, JSONParser]
+    serializer_class   = ProfileSerializer
 
     @extend_schema(
         summary='Get Profile',
@@ -173,11 +186,15 @@ class ProfileView(APIView):
 
 
 class VerifyEmailView(APIView):
+    """
+    ✅ Email Verification
+    User clicks the link in their email → this view runs → sets is_email_verified=True
+    """
     permission_classes = [AllowAny]
 
     @extend_schema(
         summary='Verify Email',
-        description='Verify user registration email using activation token.',
+        description='Verify user email using the token sent after registration.',
         responses={
             200: OpenApiResponse(description='Email verified successfully.'),
             400: OpenApiResponse(description='Invalid or expired token.'),
@@ -186,34 +203,92 @@ class VerifyEmailView(APIView):
     )
     def get(self, request, token):
         user_id = verify_token(token, 'verify_email')
+
         if not user_id:
             return Response(
-                {'error': 'Invalid or expired token.'},
+                {'error': 'Invalid or expired verification link. Please request a new one.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
         try:
             user = User.objects.get(pk=user_id)
-            if user.is_email_verified:
-                return Response(
-                    {'message': 'Email is already verified.'},
-                    status=status.HTTP_200_OK
-                )
-            user.is_email_verified = True
-            user.save()
-            return Response(
-                {'message': 'Email verified successfully.'},
-                status=status.HTTP_200_OK
-            )
         except User.DoesNotExist:
             return Response(
                 {'error': 'User not found.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        if user.is_email_verified:
+            return Response(
+                {'message': 'Email is already verified. You can login.'},
+                status=status.HTTP_200_OK
+            )
+
+        user.is_email_verified = True
+        user.save(update_fields=['is_email_verified'])
+
+        return Response(
+            {'message': 'Email verified successfully! You can now login.'},
+            status=status.HTTP_200_OK
+        )
+
+
+class ResendVerificationView(APIView):
+    """
+    ✅ Resend Verification Email
+    If user didn't receive or link expired, they can request a new one
+    """
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary='Resend Verification Email',
+        description='Resend email verification link to the user.',
+        responses={
+            200: OpenApiResponse(description='Verification email sent.'),
+            400: OpenApiResponse(description='Email already verified.'),
+        },
+        tags=['auth']
+    )
+    def post(self, request):
+        email = request.data.get('email')
+
+        if not email:
+            return Response(
+                {'error': 'Email is required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            # Don't reveal if email exists for security
+            return Response(
+                {'message': 'If this email exists, a verification link has been sent.'},
+                status=status.HTTP_200_OK
+            )
+
+        if user.is_email_verified:
+            return Response(
+                {'error': 'This email is already verified. Please login.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        token = generate_token(user.id, 'verify_email')
+        send_verification_email(user, token)
+
+        return Response(
+            {'message': 'Verification email sent successfully. Please check your inbox.'},
+            status=status.HTTP_200_OK
+        )
+
 
 class ForgotPasswordView(APIView):
+    """
+    ✅ Forgot Password
+    User enters email → receives reset link
+    """
     permission_classes = [AllowAny]
-    serializer_class = ForgotPasswordSerializer
+    serializer_class   = ForgotPasswordSerializer
 
     @extend_schema(
         summary='Forgot Password',
@@ -228,12 +303,14 @@ class ForgotPasswordView(APIView):
         serializer = ForgotPasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         email = serializer.validated_data['email']
+
         try:
             user = User.objects.get(email=email)
             token = generate_token(user.id, 'reset_password')
             send_password_reset_email(user, token)
         except User.DoesNotExist:
-            pass
+            pass  # Don't reveal if email exists
+
         return Response(
             {'message': 'If an account with this email exists, a password reset link has been sent.'},
             status=status.HTTP_200_OK
@@ -241,12 +318,16 @@ class ForgotPasswordView(APIView):
 
 
 class ResetPasswordView(APIView):
+    """
+    ✅ Reset Password
+    User clicks reset link in email → enters new password → password updated
+    """
     permission_classes = [AllowAny]
-    serializer_class = ResetPasswordSerializer
+    serializer_class   = ResetPasswordSerializer
 
     @extend_schema(
         summary='Reset Password',
-        description='Reset password using verification token.',
+        description='Reset password using the token sent to user email. Token expires in 1 hour.',
         request=ResetPasswordSerializer,
         responses={
             200: OpenApiResponse(description='Password reset successfully.'),
@@ -255,24 +336,30 @@ class ResetPasswordView(APIView):
         tags=['auth']
     )
     def post(self, request, token):
-        user_id = verify_token(token, 'reset_password')
+        # ✅ Password reset token expires in 1 hour (3600 seconds)
+        user_id = verify_token(token, 'reset_password', max_age_seconds=3600)
+
         if not user_id:
             return Response(
-                {'error': 'Invalid or expired token.'},
+                {'error': 'Invalid or expired reset link. Please request a new one.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
         try:
             user = User.objects.get(pk=user_id)
-            serializer = ResetPasswordSerializer(data=request.data)
-            serializer.is_valid(raise_exception=True)
-            user.set_password(serializer.validated_data['password'])
-            user.save()
-            return Response(
-                {'message': 'Password reset successfully.'},
-                status=status.HTTP_200_OK
-            )
         except User.DoesNotExist:
             return Response(
                 {'error': 'User not found.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        serializer = ResetPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user.set_password(serializer.validated_data['password'])
+        user.save()
+
+        return Response(
+            {'message': 'Password reset successfully. You can now login with your new password.'},
+            status=status.HTTP_200_OK
+        )

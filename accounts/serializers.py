@@ -44,6 +44,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             email=validated_data['email'],
             password=validated_data['password'],
             role='customer'
+            ## is_email_verified=False 
         )
         Profile.objects.create(user=user)
         return user

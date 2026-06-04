@@ -11,7 +11,8 @@ def send_verification_email(user, token: str):
 
     subject = "Verify your Inventory Management API account"
 
-    message = render_to_string('email_templates/verification.html', {
+    ### Just filename — Django looks in email_templates/ folder automatically
+    message = render_to_string('verification.html', {
         'username': user.username,
         'verification_url': verification_url,
     })
@@ -34,7 +35,8 @@ def send_password_reset_email(user, token: str):
 
     subject = "Reset your Inventory Management API password"
 
-    message = render_to_string('email_templates/reset_password.html', {
+    ###Just filename — Django looks in email_templates/ folder automatically
+    message = render_to_string('reset_password.html', {
         'username': user.username,
         'reset_url': reset_url,
     })
