@@ -38,16 +38,34 @@ class RegisterView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
 
-        # ✅ Generate token and send verification email
-        token = generate_token(user.id, 'verify_email')
-        send_verification_email(user, token)
+        # #Generate token and send verification email
+        # token = generate_token(user.id, 'verify_email')
+        # send_verification_email(user, token)
 
+        # return Response(
+        #     {
+        #         'message': (
+        #             f'Registration successful! '
+        #             f'Please check {user.email} to verify your account before logging in.'
+        #         )
+        #     },
+        #     status=status.HTTP_201_CREATED
+        # )
+        user.is_email_verified = True
+        user.save()
+        
+        # Generate tokens for immediate login
+        refresh = RefreshToken.for_user(user)
+        
         return Response(
             {
-                'message': (
-                    f'Registration successful! '
-                    f'Please check {user.email} to verify your account before logging in.'
-                )
+                'message': 'Registration successful!',
+                'user_id': user.id,
+                'username': user.username,
+                'tokens': {
+                    'refresh': str(refresh),
+                    'access': str(refresh.access_token),
+                }
             },
             status=status.HTTP_201_CREATED
         )
