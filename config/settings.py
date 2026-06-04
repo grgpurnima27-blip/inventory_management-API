@@ -113,8 +113,8 @@ DEFAULT_FILE_STORAGE = (
 
 PEXELS_API_KEY = os.getenv("PEXELS_API_KEY")
 
-# For development/testing - prints emails to console
-if DEBUG:
+# Simple fix - use console backend on Railway
+if os.getenv('RAILWAY_ENVIRONMENT_NAME'):
     EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
 else:
     EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
@@ -123,7 +123,6 @@ else:
     EMAIL_USE_TLS = True
     EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
     EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
- 
 # Frontend/Backend URL for email links
 FRONTEND_URL = os.getenv(
     'FRONTEND_URL',
