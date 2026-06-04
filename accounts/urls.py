@@ -7,8 +7,6 @@ from .views import (
     MeView,
     ChangePasswordView,
     LogoutView,
-    VerifyEmailView,
-    ResendVerificationView,
     ForgotPasswordView,
     ResetPasswordView,
 )
@@ -18,20 +16,18 @@ from .jwt_views import CustomTokenRefreshView
 
 urlpatterns = [
 
-    path('register/',                       RegisterView.as_view(),             name='register'),
-    path('login/',                          LoginView.as_view(),                name='login'),
-    path('admin/login/',                    AdminLoginView.as_view(),           name='admin-login'),
-    path('me/',                             MeView.as_view(),                   name='me'),
+    # Authentication
+    path('register/',RegisterView.as_view(),             name='register'),
+    path('login/',LoginView.as_view(),                name='login'),
+    path('admin/login/',AdminLoginView.as_view(),           name='admin-login'),
+    path('me/',MeView.as_view(),                   name='me'),
     path('token/refresh/',                  CustomTokenRefreshView.as_view(),   name='token-refresh'),
-    path('change-password/',               ChangePasswordView.as_view(),        name='change-password'),
-    path('logout/',                         LogoutView.as_view(),               name='logout'),
-
-    # Email Verification
-    path('verify-email/<str:token>/',       VerifyEmailView.as_view(),          name='verify-email'),
-    path('resend-verification/',            ResendVerificationView.as_view(),   name='resend-verification'),
+    
+    # Password Management
+    path('change-password/',                ChangePasswordView.as_view(),       name='change-password'),
+    path('logout/',LogoutView.as_view(),               name='logout'),
 
     # Password Reset
-    path('forgot-password/',               ForgotPasswordView.as_view(),        name='forgot-password'),
-    path('reset-password/<str:token>/',    ResetPasswordView.as_view(),         name='reset-password'),
-
+    path('forgot-password/',                ForgotPasswordView.as_view(),       name='forgot-password'),
+    path('reset-password/<str:token>/',     ResetPasswordView.as_view(),        name='reset-password'),
 ]
