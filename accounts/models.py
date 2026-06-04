@@ -9,6 +9,11 @@ class CustomUser(AbstractUser):
         ('admin', 'Admin'),
         ('customer', 'Customer'),
     )
+    username = models.CharField(
+        max_length=150,
+        unique=True,
+    )
+    email= models.EmailField(unique= True,)
 
     role = models.CharField(
         max_length=20,
@@ -16,6 +21,7 @@ class CustomUser(AbstractUser):
         default='customer'
     )
     is_email_verified= models.BooleanField(default=False)
+ 
 
     def is_admin_user(self):
         return self.role == 'admin'
