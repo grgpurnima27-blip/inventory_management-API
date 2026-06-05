@@ -10,7 +10,7 @@ from .views import (
     ForgotPasswordView,
     ResetPasswordView,
 )
-
+from .google_auth import GoogleAuthView, GoogleLoginURLView
 from .jwt_views import CustomTokenRefreshView
 
 
@@ -30,4 +30,7 @@ urlpatterns = [
     # Password Reset
     path('forgot-password/',                ForgotPasswordView.as_view(),       name='forgot-password'),
     path('reset-password/<str:token>/',     ResetPasswordView.as_view(),        name='reset-password'),
+    # google oauth
+    path('google/login', GoogleAuthView.as_view(), name='google-login'),
+    path('google/auth-url',GoogleLoginURLView.as_view(), name='google-auth-url'),
 ]
