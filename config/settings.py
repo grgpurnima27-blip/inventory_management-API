@@ -3,12 +3,12 @@ Django settings for config project.
 """
 
 from pathlib import Path
-import os
-from datetime import timedelta
-from django.core.exceptions import ImproperlyConfigured
+import os # imports os module for operating system interfaces (environments varabiles, file paths, etc)
+from datetime import timedelta # used for JWT token expiration times
+from django.core.exceptions import ImproperlyConfigured # imports expection that rises when django settings are misconfigured or missing required values 
 
-from dotenv import load_dotenv
-import dj_database_url
+from dotenv import load_dotenv # used to load environment variables from .env file into os.environ
+import dj_database_url 
 import cloudinary
 
 load_dotenv()
@@ -26,11 +26,12 @@ if not SECRET_KEY:
     )
 
 DEBUG = os.getenv("DEBUG", "False") == "True"
+# True in development, but False in production, hides errors and better security 
 
 ALLOWED_HOSTS = [
-    "127.0.0.1",
-    "localhost",
-    ".railway.app",
+    "127.0.0.1", # local computer IP
+    "localhost", # local computer name 
+    ".railway.app", # Any subdomain of railway.app
     ".up.railway.app",  ### Add Railway default domain
 ]
 
@@ -54,7 +55,7 @@ if not DEBUG:
     if cors_origins:
         CORS_ALLOWED_ORIGINS = cors_origins.split(",")
     else:
-        CORS_ALLOWED_ORIGINS = [
+        CORS_ALLOWED_ORIGINS = [ # development: Allow local frontends
             "http://localhost:3000",
             "http://localhost:5173",
             "http://localhost:8000",
@@ -132,7 +133,7 @@ FRONTEND_URL = os.getenv(
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
-    "django.contrib.contenttypes",
+    "django.contrib.contenttypes", # tracks django models 
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
@@ -146,7 +147,7 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
-    "social_django",
+    "social_django", #social authentication such as Google OAuth
 
     "products",
     "warehouses",
@@ -160,7 +161,7 @@ INSTALLED_APPS = [
     "notifications",
 ]
 
-# MIDDLEWARE
+# MIDDLEWARE list of middleware components (process requests/responses in order)
 
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
@@ -206,8 +207,8 @@ if DATABASE_URL:
     DATABASES = {
         "default": dj_database_url.parse(
             DATABASE_URL,
-            conn_max_age=600,
-            ssl_require=True,
+            conn_max_age=600, ### keep connection alive for 10 minutes
+            ssl_require=True, ### force encrypted connection 
         )
     }
 else:
@@ -215,50 +216,45 @@ else:
         "default": {
             "ENGINE":
             "django.db.backends.sqlite3",
-            "NAME":
-            BASE_DIR / "db.sqlite3",
+            "NAME": BASE_DIR / "db.sqlite3",
         }
     }
 
-# AUTH USER
+# AUTH USER   ### uses custom user model instead of default django user model  
 AUTH_USER_MODEL = "accounts.CustomUser"
 
 AUTH_PASSWORD_VALIDATORS = [
     {
-        "NAME":
-        "django.contrib.auth.password_validation.MinimumLengthValidator",
-        "OPTIONS":
-        {"min_length": 8},
+        "NAME": "django.contrib.auth.password_validation.MinimumLengthValidator",
+        "OPTIONS":{"min_length": 8},
     },
     {
-        "NAME":
-        "django.contrib.auth.password_validation.CommonPasswordValidator",
+        "NAME":"django.contrib.auth.password_validation.CommonPasswordValidator",
     },
     {
-        "NAME":
-        "django.contrib.auth.password_validation.NumericPasswordValidator",
+        "NAME":"django.contrib.auth.password_validation.NumericPasswordValidator",
     },
 ]
 
 # LANGUAGE
 LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = "UTC"
+TIME_ZONE = "UTC" # universal Time coordinated 
 
-USE_I18N = True
+USE_I18N = True # enable internationalization 
 
-USE_TZ = True
+USE_TZ = True  # use timezone-aware datatimes
 
 # STATIC FILES
-STATIC_URL = "/static/"
+STATIC_URL = "/static/"  ## url path for static files (CSS, JS, images)
 
-STATIC_ROOT = BASE_DIR / "staticfiles"
+STATIC_ROOT = BASE_DIR / "staticfiles" # folder where django collects all static files for production
 
 STATICFILES_STORAGE = (
     "whitenoise.storage.CompressedManifestStaticFilesStorage"
 )
 
-# MEDIA
+# MEDIA handles user-uploaded files( profile pictures, product images )
 
 MEDIA_URL = "/media/"
 
@@ -280,9 +276,9 @@ REST_FRAMEWORK = {
         "drf_spectacular.openapi.AutoSchema",
 
     "DEFAULT_FILTER_BACKENDS": (
-        "django_filters.rest_framework.DjangoFilterBackend",
-        "rest_framework.filters.SearchFilter",
-        "rest_framework.filters.OrderingFilter",
+        "django_filters.rest_framework.DjangoFilterBackend",# search by exact filelds
+        "rest_framework.filters.SearchFilter", # search text
+        "rest_framework.filters.OrderingFilter", # sort results 
     ),
 
     "DEFAULT_PAGINATION_CLASS":
@@ -296,9 +292,9 @@ REST_FRAMEWORK = {
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(days=7),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
-    "ROTATE_REFRESH_TOKENS": False,
-    "BLACKLIST_AFTER_ROTATION": True,
-    "AUTH_HEADER_TYPES": ("Bearer",),
+    "ROTATE_REFRESH_TOKENS": False, # not to give refresh token each time
+    "BLACKLIST_AFTER_ROTATION": True, # old token becomes invalid 
+    "AUTH_HEADER_TYPES": ("Bearer",), # format: "Bearer <token>"
 }
 
 # SWAGGER
@@ -338,11 +334,11 @@ SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
 
 # Add authentication backends
 AUTHENTICATION_BACKENDS = (
-    'social_core.backends.google.GoogleOAuth2',
-    'django.contrib.auth.backends.ModelBackend',
+    'social_core.backends.google.GoogleOAuth2', # google login 
+    'django.contrib.auth.backends.ModelBackend', # Normal username/password
 )
 
-# CACHE
+# CACHE for a faster response 
 CACHES = {
     "default": {
         "BACKEND":
@@ -350,4 +346,17 @@ CACHES = {
         "LOCATION":
         "unique-inventory-cache",
     }
+}
+
+""""
+cache stores frequently accessed data in RAM for quick retrieval.
+"""
+
+
+ESEWA_SETTINGS = {
+    "MERCHANT_ID": "",  # Sandbox test merchant
+    "SECRET_KEY": "",  # Sandbox secret key
+    "INITIATE_URL": "https://rc-epay.esewa.com.np/api/epay/main/v2/form",
+    "SUCCESS_URL": "https://yourdomain.com/api/orders/esewa-verify/",
+    "FAILURE_URL": "https://yourdomain.com/payment-failed",
 }

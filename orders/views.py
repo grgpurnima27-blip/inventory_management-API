@@ -1,6 +1,3 @@
-import qrcode
-import base64
-from io import BytesIO
 from decimal import Decimal
 from django.db import transaction
 from django.utils import timezone
@@ -15,9 +12,8 @@ from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
 from config.permissions import IsAuthenticatedCustomer, IsAdminRole
 from inventory.models import Inventory
 from products.models import Product
-from warehouses.models import Warehouse
 from .models import Order, OrderItem
-from .serializers import OrderSerializer
+from .serializers import OrderSerializer, OrderCustomerSerializer, OrderAdminSerializer
 from notifications.utils import send_notification
 
 
@@ -32,14 +28,38 @@ class OrderCreateSerializer(serializers.Serializer):
     payment_method = serializers.ChoiceField(
         choices=['esewa', 'cod'],
         default='cod',
-        help_text='Payment method'
+        help_text='esewa or cod'
     )
-    items = OrderItemCreateSerializer(many=True, help_text='List of products to order')
+    items = OrderItemCreateSerializer(many=True)
+
+
+class ConfirmPaymentSerializer(serializers.Serializer):
+    transaction_id = serializers.CharField(
+        help_text='eSewa transaction ID from your eSewa app after payment.'
+    )
+
+
+class AdminUpdateOrderSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(
+        choices=[
+            Order.STATUS_PENDING,
+            Order.STATUS_PROCESSING,
+            Order.STATUS_SHIPPED,
+            Order.STATUS_COMPLETED,
+            Order.STATUS_CANCELLED,
+        ],
+        required=False,
+        help_text='New order status'
+    )
+    payment_status = serializers.ChoiceField(
+        choices=['pending', 'paid', 'failed', 'refunded'],
+        required=False,
+        help_text='New payment status'
+    )
 
 
 class OrderViewSet(viewsets.ModelViewSet):
 
-    serializer_class   = OrderSerializer
     permission_classes = [IsAuthenticatedCustomer]
 
     queryset = Order.objects.select_related('user').prefetch_related(
@@ -50,35 +70,43 @@ class OrderViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.role == 'admin':
             return self.queryset
+        #  Customers only see their own orders
         return self.queryset.filter(user=user)
+
+    def get_serializer_class(self):
+        # Admin gets full serializer with editable status fields
+        if self.request.user.role == 'admin':
+            return OrderAdminSerializer
+        # Customer gets read-only status fields
+        return OrderCustomerSerializer
 
     @extend_schema(
         summary='Create Order',
-        description='Create a new order with items and payment method preference. For eSewa payment, a QR code will be generated.',
+        description=(
+            'Create a new order. For eSewa, pay on the app then '
+            'call /confirm-payment/ with your transaction ID.'
+        ),
         request=OrderCreateSerializer,
         responses={
-            201: OrderSerializer,
-            400: OpenApiResponse(description='Bad request - invalid data'),
-            401: OpenApiResponse(description='Unauthorized - valid token required'),
+            201: OrderCustomerSerializer,
+            400: OpenApiResponse(description='Bad request.'),
         },
         tags=['orders'],
         examples=[
             OpenApiExample(
-                'eSewa Payment Example',
-                description='Order with eSewa payment (QR code will be generated)',
+                'eSewa Payment',
                 value={
-                    'customer_name': 'priscagurung',
+                    'customer_name': 'Rupa',
                     'delivery_city': 'Kathmandu',
                     'payment_method': 'esewa',
-                    'items': [{'product': 2, 'quantity': 1}]
+                    'items': [{'product': 1, 'quantity': 1}]
                 },
                 request_only=True,
             ),
             OpenApiExample(
-                'Cash on Delivery Example',
-                description='Order with Cash on Delivery payment',
+                'Cash on Delivery',
                 value={
-                    'customer_name': 'john_doe',
+                    'customer_name': 'Rupa',
                     'delivery_city': 'Pokhara',
                     'payment_method': 'cod',
                     'items': [
@@ -94,7 +122,6 @@ class OrderViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         data = request.data
 
-        # Validate required fields
         if not data.get('customer_name'):
             return Response(
                 {'error': 'customer_name is required.'},
@@ -111,15 +138,11 @@ class OrderViewSet(viewsets.ModelViewSet):
         payment_method = data.get('payment_method', Order.PAYMENT_METHOD_COD)
         if payment_method not in [Order.PAYMENT_METHOD_ESEWA, Order.PAYMENT_METHOD_COD]:
             return Response(
-                {'error': f'Invalid payment_method. Must be "esewa" or "cod".'},
+                {'error': 'Invalid payment_method. Must be "esewa" or "cod".'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        delivery_city = data.get('delivery_city', 'Kathmandu')
-
-        # ------------------------------------------------------------------
-        # Validate and process items using Decimal to avoid precision issues
-        # ------------------------------------------------------------------
+        delivery_city   = data.get('delivery_city', 'Kathmandu')
         order_items     = []
         original_amount = Decimal('0.00')
 
@@ -131,22 +154,30 @@ class OrderViewSet(viewsets.ModelViewSet):
                 quantity = int(quantity_val)
             except (ValueError, TypeError):
                 return Response(
-                    {'error': f'Quantity must be a valid integer for product ID {product_id}.'},
+                    {'error': f'Invalid quantity for product ID {product_id}.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
             if not product_id:
-                return Response({'error': 'Each item must have a product ID.'}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {'error': 'Each item must have a product ID.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
             if quantity <= 0:
-                return Response({'error': f'Quantity must be greater than 0.'}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {'error': 'Quantity must be greater than 0.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
             try:
                 product = Product.objects.get(id=int(product_id))
             except Product.DoesNotExist:
-                return Response({'error': f'Product with id {product_id} does not exist.'}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {'error': f'Product with id {product_id} does not exist.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-            # ✅ Find inventory in delivery city warehouse
             inventory = Inventory.objects.select_for_update().filter(
                 product=product,
                 warehouse__city__iexact=delivery_city,
@@ -155,33 +186,30 @@ class OrderViewSet(viewsets.ModelViewSet):
 
             if not inventory:
                 return Response(
-                    {'error': f'Sorry, {product.name} is out of stock in {delivery_city} with the requested quantity.'},
+                    {
+                        'error': (
+                            f'{product.name} is not available in '
+                            f'{delivery_city} with the requested quantity.'
+                        )
+                    },
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # ✅ Use Decimal for price calculation
-            unit_price   = Decimal(str(product.price))
-            item_total   = unit_price * quantity
-            original_amount += item_total
+            unit_price       = Decimal(str(product.price))
+            original_amount += unit_price * quantity
 
             order_items.append({
-                'product':   product,
-                'warehouse': inventory.warehouse,
-                'inventory': inventory,
-                'quantity':  quantity,
+                'product':    product,
+                'warehouse':  inventory.warehouse,
+                'inventory':  inventory,
+                'quantity':   quantity,
                 'unit_price': unit_price,
             })
 
-        # ------------------------------------------------------------------
-        # Calculate totals with Decimal
-        # ------------------------------------------------------------------
         original_amount = original_amount.quantize(Decimal('0.01'))
         discount_amount = Decimal('0.00')
-        total_price     = (original_amount - discount_amount).quantize(Decimal('0.01'))
+        total_price     = original_amount.quantize(Decimal('0.01'))
 
-        # ------------------------------------------------------------------
-        # Create order
-        # ------------------------------------------------------------------
         try:
             order = Order.objects.create(
                 user            = request.user,
@@ -197,9 +225,6 @@ class OrderViewSet(viewsets.ModelViewSet):
             error_msg = e.message_dict if hasattr(e, 'message_dict') else str(e)
             return Response({'error': error_msg}, status=status.HTTP_400_BAD_REQUEST)
 
-        # ------------------------------------------------------------------
-        # Create order items and deduct inventory
-        # ------------------------------------------------------------------
         for item_data in order_items:
             OrderItem.objects.create(
                 order      = order,
@@ -208,72 +233,148 @@ class OrderViewSet(viewsets.ModelViewSet):
                 quantity   = item_data['quantity'],
                 unit_price = item_data['unit_price'],
             )
-            inv = item_data['inventory']
+            inv           = item_data['inventory']
             inv.quantity -= item_data['quantity']
             inv.save()
 
-        # Notify user
         send_notification(order.user, 'order_placed', order.id)
 
-        # Prepare response
-        serializer    = self.get_serializer(order)
+        serializer    = OrderCustomerSerializer(order)
         response_data = serializer.data
 
-        # ✅ Generate QR only if eSewa
         if payment_method == Order.PAYMENT_METHOD_ESEWA:
-            qr_data = self._generate_payment_qr(order)
-            response_data['qr_code']             = qr_data
-            response_data['payment_instructions'] = 'Scan this QR code with eSewa app to complete payment'
+            response_data['payment_instructions'] = (
+                f'Your order total is NPR {total_price}. '
+                f'Please pay via eSewa app. '
+                f'After payment call POST /api/orders/{order.id}/confirm-payment/ '
+                f'with your eSewa transaction ID.'
+            )
         else:
-            response_data['payment_instructions'] = 'Pay cash upon delivery'
+            response_data['payment_instructions'] = (
+                f'Pay cash upon delivery. '
+                f'Amount: NPR {total_price}.'
+            )
 
         headers = self.get_success_headers(serializer.data)
         return Response(response_data, status=status.HTTP_201_CREATED, headers=headers)
 
-    def _generate_payment_qr(self, order):
-        """Generate QR code for eSewa payment"""
-        esewa_url = (
-            f"esewa://payment?"
-            f"amount={order.total_price}&"
-            f"remarks=Order%23{order.id}&"
-            f"pid=ORDER-{order.id}"
-        )
-        qr = qrcode.QRCode(
-            version=1,
-            error_correction=qrcode.constants.ERROR_CORRECT_H,
-            box_size=10,
-            border=4,
-        )
-        qr.add_data(esewa_url)
-        qr.make(fit=True)
-
-        img    = qr.make_image(fill_color='#60BB46', back_color='white')
-        buffer = BytesIO()
-        img.save(buffer, format='PNG')
-        qr_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
-
-        return {
-            'qr_code':   f'data:image/png;base64,{qr_base64}',
-            'amount':    str(order.total_price),
-            'esewa_url': esewa_url,
-            'order_id':  order.id,
-        }
-
+    @extend_schema(
+        summary='Update Order (Admin only)',
+        description='Admin can update order status and payment status.',
+        request=AdminUpdateOrderSerializer,
+        responses={
+            200: OrderAdminSerializer,
+            400: OpenApiResponse(description='Invalid transition.'),
+            403: OpenApiResponse(description='Admin only.'),
+        },
+        tags=['orders'],
+        examples=[
+            OpenApiExample(
+                'Update status only',
+                value={'status': 'processing'},
+                request_only=True,
+            ),
+            OpenApiExample(
+                'Update payment status only',
+                value={'payment_status': 'paid'},
+                request_only=True,
+            ),
+            OpenApiExample(
+                'Update both',
+                value={'status': 'processing', 'payment_status': 'paid'},
+                request_only=True,
+            ),
+        ]
+    )
     def update(self, request, *args, **kwargs):
+        # Only admin can update
         if request.user.role != 'admin':
-            return Response({'error': 'Only admins can update orders.'}, status=status.HTTP_403_FORBIDDEN)
-        return super().update(request, *args, **kwargs)
+            return Response(
+                {'error': 'Only admins can update orders.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        order      = self.get_object()
+        new_status = request.data.get('status')
+        new_payment_status = request.data.get('payment_status')
+
+        # Validate status transition
+        if new_status:
+            valid_transitions = {
+                Order.STATUS_PENDING:    [Order.STATUS_PROCESSING, Order.STATUS_CANCELLED],
+                Order.STATUS_PROCESSING: [Order.STATUS_SHIPPED, Order.STATUS_CANCELLED],
+                Order.STATUS_SHIPPED:    [Order.STATUS_COMPLETED],
+                Order.STATUS_COMPLETED:  [],
+                Order.STATUS_CANCELLED:  [],
+            }
+            allowed = valid_transitions.get(order.status, [])
+            if new_status not in allowed:
+                return Response(
+                    {
+                        'error': (
+                            f'Cannot move from "{order.status}" to "{new_status}". '
+                            f'Allowed: {allowed}'
+                        )
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            timestamp_map = {
+                Order.STATUS_PROCESSING: 'processed_at',
+                Order.STATUS_SHIPPED:    'shipped_at',
+                Order.STATUS_COMPLETED:  'completed_at',
+                Order.STATUS_CANCELLED:  'cancelled_at',
+            }
+            timestamp_field = timestamp_map.get(new_status)
+            if timestamp_field:
+                setattr(order, timestamp_field, timezone.now())
+            order.status = new_status
+
+            # Send notification
+            notification_map = {
+                Order.STATUS_PROCESSING: 'order_processing',
+                Order.STATUS_SHIPPED:    'order_shipped',
+                Order.STATUS_COMPLETED:  'order_completed',
+                Order.STATUS_CANCELLED:  'order_cancelled',
+            }
+            notification_type = notification_map.get(new_status)
+            if notification_type:
+                send_notification(order.user, notification_type, order.id)
+
+        # Validate payment status
+        if new_payment_status:
+            if order.payment_status == 'paid' and new_payment_status != 'paid':
+                return Response(
+                    {'error': 'Cannot change payment status from "paid".'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if new_payment_status == 'paid' and order.payment_status != 'paid':
+                order.paid_at = timezone.now()
+            order.payment_status = new_payment_status
+
+        order.save()
+
+        return Response(
+            OrderAdminSerializer(order).data,
+            status=status.HTTP_200_OK
+        )
+
+    def partial_update(self, request, *args, **kwargs):
+        return self.update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
         if request.user.role != 'admin':
-            return Response({'error': 'Only admins can delete orders.'}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {'error': 'Only admins can delete orders.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
         return super().destroy(request, *args, **kwargs)
 
     @extend_schema(
         summary='Cancel Order',
         responses={
-            200: OpenApiResponse(description='Order cancelled successfully.'),
-            400: OpenApiResponse(description='Order already cancelled.'),
+            200: OpenApiResponse(description='Cancelled successfully.'),
+            400: OpenApiResponse(description='Cannot cancel.'),
             403: OpenApiResponse(description='Not your order.'),
         },
         tags=['orders']
@@ -284,13 +385,22 @@ class OrderViewSet(viewsets.ModelViewSet):
         order = self.get_object()
 
         if request.user.role != 'admin' and order.user != request.user:
-            return Response({'error': 'You can only cancel your own orders.'}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {'error': 'You can only cancel your own orders.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         if order.status == Order.STATUS_CANCELLED:
-            return Response({'error': 'Order is already cancelled.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'Order is already cancelled.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         if order.status == Order.STATUS_SHIPPED:
-            return Response({'error': 'Cannot cancel an order that has already been shipped.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'Cannot cancel an order that has been shipped.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         for item in order.items.all():
             inventory = Inventory.objects.select_for_update().get(
@@ -300,27 +410,42 @@ class OrderViewSet(viewsets.ModelViewSet):
             inventory.quantity += item.quantity
             inventory.save()
 
-        order.status      = Order.STATUS_CANCELLED
+        order.status       = Order.STATUS_CANCELLED
         order.cancelled_at = timezone.now()
         order.save()
 
         send_notification(order.user, 'order_cancelled', order.id)
 
-        return Response({'message': 'Order cancelled successfully. Inventory restored.'}, status=status.HTTP_200_OK)
+        return Response(
+            {'message': 'Order cancelled successfully. Inventory restored.'},
+            status=status.HTTP_200_OK
+        )
 
     @extend_schema(
         summary='Track Order',
-        responses={200: OpenApiResponse(description='Tracking info returned.')},
+        responses={200: OpenApiResponse(description='Tracking info.')},
         tags=['orders']
     )
-    @action(detail=True, methods=['get'], url_path='track', permission_classes=[IsAuthenticatedCustomer])
+    @action(
+        detail=True,
+        methods=['get'],
+        url_path='track',
+        permission_classes=[IsAuthenticatedCustomer]
+    )
     def track(self, request, pk=None):
         order = self.get_object()
 
         if request.user.role != 'admin' and order.user != request.user:
-            return Response({'error': 'You can only track your own orders.'}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {'error': 'You can only track your own orders.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
-        timeline = [{'stage': 'Order Placed', 'status': 'completed', 'timestamp': order.created_at}]
+        timeline = [{
+            'stage':     'Order Placed',
+            'status':    'completed',
+            'timestamp': order.created_at
+        }]
 
         stages = [
             ('processing', 'Processing', order.processed_at),
@@ -331,166 +456,126 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         for stage_key, stage_label, timestamp in stages:
             if timestamp:
-                timeline.append({'stage': stage_label, 'status': 'completed', 'timestamp': timestamp})
-            elif order.status not in [Order.STATUS_CANCELLED, Order.STATUS_COMPLETED]:
+                timeline.append({
+                    'stage':     stage_label,
+                    'status':    'completed',
+                    'timestamp': timestamp
+                })
+            elif order.status not in [
+                Order.STATUS_CANCELLED,
+                Order.STATUS_COMPLETED
+            ]:
                 if stage_key != 'cancelled':
-                    timeline.append({'stage': stage_label, 'status': 'pending', 'timestamp': None})
+                    timeline.append({
+                        'stage':     stage_label,
+                        'status':    'pending',
+                        'timestamp': None
+                    })
 
-        return Response({
-            'order_id':       order.id,
-            'customer_name':  order.customer_name,
-            'current_status': order.status,
-            'delivery_city':  order.delivery_city,
-            'total_price':    str(order.total_price),
-            'payment_method': order.payment_method,
-            'payment_status': order.payment_status,
-            'timeline':       timeline,
-        }, status=status.HTTP_200_OK)
-
-    @extend_schema(
-        summary='Update Order Status (Admin only)',
-        description='Move order through: pending → processing → shipped → completed',
-        request=None,
-        responses={
-            200: OpenApiResponse(description='Status updated.'),
-            400: OpenApiResponse(description='Invalid status transition.'),
-        },
-        tags=['orders'],
-        examples=[
-            OpenApiExample(name='Update Status Example', value={'status': 'processing'}, request_only=True)
-        ]
-    )
-    @action(detail=True, methods=['patch'], url_path='update-status', permission_classes=[IsAdminRole])
-    def update_status(self, request, pk=None):
-        order      = self.get_object()
-        new_status = request.data.get('status')
-
-        valid_transitions = {
-            Order.STATUS_PENDING:    [Order.STATUS_PROCESSING, Order.STATUS_CANCELLED],
-            Order.STATUS_PROCESSING: [Order.STATUS_SHIPPED, Order.STATUS_CANCELLED],
-            Order.STATUS_SHIPPED:    [Order.STATUS_COMPLETED],
-            Order.STATUS_COMPLETED:  [],
-            Order.STATUS_CANCELLED:  [],
-        }
-
-        allowed = valid_transitions.get(order.status, [])
-        if new_status not in allowed:
-            return Response(
-                {'error': f'Cannot move from "{order.status}" to "{new_status}". Allowed: {allowed}'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        timestamp_map = {
-            Order.STATUS_PROCESSING: 'processed_at',
-            Order.STATUS_SHIPPED:    'shipped_at',
-            Order.STATUS_COMPLETED:  'completed_at',
-            Order.STATUS_CANCELLED:  'cancelled_at',
-        }
-
-        order.status = new_status
-        timestamp_field = timestamp_map.get(new_status)
-        if timestamp_field:
-            setattr(order, timestamp_field, timezone.now())
-        order.save()
-
-        STATUS_NOTIFICATION_MAP = {
-            Order.STATUS_PROCESSING: 'order_processing',
-            Order.STATUS_SHIPPED:    'order_shipped',
-            Order.STATUS_COMPLETED:  'order_completed',
-            Order.STATUS_CANCELLED:  'order_cancelled',
-        }
-        notification_type = STATUS_NOTIFICATION_MAP.get(new_status)
-        if notification_type:
-            send_notification(order.user, notification_type, order.id)
-
-        return Response({
-            'message':    f'Order status updated to "{new_status}".',
-            'order_id':   order.id,
-            'status':     order.status,
-            'updated_at': order.updated_at,
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {
+                'order_id':       order.id,
+                'customer_name':  order.customer_name,
+                'current_status': order.status,
+                'delivery_city':  order.delivery_city,
+                'total_price':    str(order.total_price),
+                'payment_method': order.payment_method,
+                'payment_status': order.payment_status,
+                'timeline':       timeline,
+            },
+            status=status.HTTP_200_OK
+        )
 
     @extend_schema(
         summary='Confirm eSewa Payment',
+        description=(
+            'After paying on eSewa app submit your '
+            'transaction ID to confirm payment.'
+        ),
+        request=ConfirmPaymentSerializer,
         responses={
-            200: OpenApiResponse(description='Payment confirmed successfully.'),
-            400: OpenApiResponse(description='Invalid payment data.'),
+            200: OpenApiResponse(description='Payment confirmed.'),
+            400: OpenApiResponse(description='Invalid data.'),
         },
-        tags=['orders']
+        tags=['orders'],
+        examples=[
+            OpenApiExample(
+                'Confirm Payment Example',
+                value={'transaction_id': 'ESEWA-TXN-123456789'},
+                request_only=True,
+            )
+        ]
     )
-    @action(detail=True, methods=['post'], url_path='confirm-payment', permission_classes=[IsAuthenticatedCustomer])
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='confirm-payment',
+        permission_classes=[IsAuthenticatedCustomer]
+    )
     def confirm_payment(self, request, pk=None):
         order = self.get_object()
 
         if request.user.role != 'admin' and order.user != request.user:
-            return Response({'error': 'You can only confirm payment for your own orders.'}, status=status.HTTP_403_FORBIDDEN)
+            return Response(
+                {'error': 'You can only confirm payment for your own orders.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         if order.payment_method != Order.PAYMENT_METHOD_ESEWA:
-            return Response({'error': 'This order is not for eSewa payment.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'This order uses Cash on Delivery, not eSewa.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         if order.payment_status == 'paid':
-            return Response({'error': 'Payment already confirmed for this order.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'Payment already confirmed for this order.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if order.status == Order.STATUS_CANCELLED:
+            return Response(
+                {'error': 'Cannot confirm payment for a cancelled order.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         transaction_id = request.data.get('transaction_id')
         if not transaction_id:
-            return Response({'error': 'Transaction ID is required.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {'error': 'transaction_id is required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check duplicate transaction ID
+        if Order.objects.filter(
+            payment_transaction_id=transaction_id
+        ).exclude(id=order.id).exists():
+            return Response(
+                {'error': 'This transaction ID has already been used.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         order.payment_status         = 'paid'
         order.payment_transaction_id = transaction_id
         order.paid_at                = timezone.now()
-        order.save()
 
+        #  Auto move to processing after payment
         if order.status == Order.STATUS_PENDING:
             order.status       = Order.STATUS_PROCESSING
             order.processed_at = timezone.now()
-            order.save()
 
-        return Response({
-            'message':        'Payment confirmed successfully!',
-            'order_id':       order.id,
-            'payment_status': order.payment_status,
-            'transaction_id': order.payment_transaction_id,
-        }, status=status.HTTP_200_OK)
+        order.save()
 
-    @extend_schema(
-        summary='Get Payment QR Code',
-        responses={
-            200: OpenApiResponse(description='QR code generated successfully.'),
-            400: OpenApiResponse(description='Order not eligible for QR payment.'),
-        },
-        tags=['orders']
-    )
-    @action(detail=True, methods=['get'], url_path='payment-qr', permission_classes=[IsAuthenticatedCustomer])
-    def payment_qr(self, request, pk=None):
-        order = self.get_object()
+        send_notification(order.user, 'order_processing', order.id)
 
-        if request.user.role != 'admin' and order.user != request.user:
-            return Response({'error': 'You can only access your own orders.'}, status=status.HTTP_403_FORBIDDEN)
-
-        if order.payment_method != Order.PAYMENT_METHOD_ESEWA:
-            return Response({'error': 'This order is not for eSewa payment.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if order.payment_status == 'paid':
-            return Response({'error': 'This order has already been paid.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        if order.status == Order.STATUS_CANCELLED:
-            return Response({'error': 'Cannot generate QR for a cancelled order.'}, status=status.HTTP_400_BAD_REQUEST)
-
-        qr_data = self._generate_payment_qr(order)
-
-        return Response({
-            'order_id':       order.id,
-            'customer_name':  order.customer_name,
-            'amount':         str(order.total_price),
-            'currency':       'NPR',
-            'payment_method': 'eSewa',
-            'payment_status': order.payment_status,
-            'qr_code':        qr_data['qr_code'],
-            'esewa_url':      qr_data['esewa_url'],
-            'instructions': (
-                f'1. Open eSewa app\n'
-                f'2. Scan the QR code\n'
-                f'3. Confirm payment of NPR {order.total_price}\n'
-                f'4. After payment, call confirm-payment endpoint with transaction ID'
-            ),
-        }, status=status.HTTP_200_OK)
+        return Response(
+            {
+                'message':        'Payment confirmed! Your order is now being processed.',
+                'order_id':       order.id,
+                'payment_status': order.payment_status,
+                'order_status':   order.status,
+                'transaction_id': order.payment_transaction_id,
+                'paid_at':        order.paid_at,
+            },
+            status=status.HTTP_200_OK
+        )

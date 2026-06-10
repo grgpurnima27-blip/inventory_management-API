@@ -8,27 +8,26 @@ from warehouses.models import Warehouse
 
 class Order(models.Model):
 
-    STATUS_PENDING = 'pending'
-    STATUS_PROCESSING = 'processing'    
-    STATUS_SHIPPED = 'shipped'          
-    STATUS_COMPLETED = 'completed'
-    STATUS_CANCELLED = 'cancelled'
+    STATUS_PENDING    = 'pending'
+    STATUS_PROCESSING = 'processing'
+    STATUS_SHIPPED    = 'shipped'
+    STATUS_COMPLETED  = 'completed'
+    STATUS_CANCELLED  = 'cancelled'
 
     STATUS_CHOICES = [
-        (STATUS_PENDING, 'Pending'),
-        (STATUS_PROCESSING, 'Processing'),  
-        (STATUS_SHIPPED, 'Shipped'),
-        (STATUS_COMPLETED, 'Completed'),
-        (STATUS_CANCELLED, 'Cancelled'),
+        (STATUS_PENDING,    'Pending'),
+        (STATUS_PROCESSING, 'Processing'),
+        (STATUS_SHIPPED,    'Shipped'),
+        (STATUS_COMPLETED,  'Completed'),
+        (STATUS_CANCELLED,  'Cancelled'),
     ]
 
-    # Payment method choices
     PAYMENT_METHOD_ESEWA = 'esewa'
-    PAYMENT_METHOD_COD = 'cod'
-    
+    PAYMENT_METHOD_COD   = 'cod'
+
     PAYMENT_METHOD_CHOICES = [
-        (PAYMENT_METHOD_ESEWA, 'eSewa (QR Code)'),
-        (PAYMENT_METHOD_COD, 'Cash on Delivery'),
+        (PAYMENT_METHOD_ESEWA, 'eSewa'),
+        (PAYMENT_METHOD_COD,   'Cash on Delivery'),
     ]
 
     user = models.ForeignKey(
@@ -50,7 +49,6 @@ class Order(models.Model):
         default=STATUS_PENDING
     )
 
-    # Payment method field
     payment_method = models.CharField(
         max_length=10,
         choices=PAYMENT_METHOD_CHOICES,
@@ -58,48 +56,41 @@ class Order(models.Model):
     )
 
     total_price = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        default=0
+        max_digits=12, decimal_places=2, default=0
     )
 
     original_amount = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        default=0
+        max_digits=12, decimal_places=2, default=0
     )
 
     discount_amount = models.DecimalField(
-        max_digits=12,
-        decimal_places=2,
-        default=0
+        max_digits=12, decimal_places=2, default=0
     )
 
-    # Payment tracking fields (optional)
     payment_status = models.CharField(
         max_length=20,
         default='pending',
         choices=[
-            ('pending', 'Pending'),
-            ('paid', 'Paid'),
-            ('failed', 'Failed'),
+            ('pending',  'Pending'),
+            ('paid',     'Paid'),
+            ('failed',   'Failed'),
             ('refunded', 'Refunded'),
         ]
     )
-    
+
     payment_transaction_id = models.CharField(
         max_length=255,
         blank=True,
+        unique=True,
         null=True,
         help_text='eSewa transaction ID after successful payment'
     )
 
-    # Tracking timestamps
     processed_at = models.DateTimeField(null=True, blank=True)
-    shipped_at = models.DateTimeField(null=True, blank=True)
+    shipped_at   = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
-    paid_at = models.DateTimeField(null=True, blank=True)
+    paid_at      = models.DateTimeField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -124,29 +115,16 @@ class Order(models.Model):
 
     def __str__(self):
         return f'Order #{self.id} - {self.customer_name} - {self.status}'
-    
-    @property
-    def needs_qr_code(self):
-        """Check if order needs QR code for payment"""
-        return self.payment_method == self.PAYMENT_METHOD_ESEWA and self.payment_status == 'pending'
 
 
 class OrderItem(models.Model):
 
-    order = models.ForeignKey(
-        Order,
-        on_delete=models.CASCADE,
-        related_name='items'
-    )
-
-    product = models.ForeignKey(Product, on_delete=models.CASCADE)
+    order     = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
+    product   = models.ForeignKey(Product, on_delete=models.CASCADE)
     warehouse = models.ForeignKey(Warehouse, on_delete=models.CASCADE)
-    quantity = models.PositiveIntegerField()
+    quantity  = models.PositiveIntegerField()
 
-    unit_price = models.DecimalField(
-        max_digits=10,
-        decimal_places=2
-    )
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
 
     class Meta:
         ordering = ['id']
