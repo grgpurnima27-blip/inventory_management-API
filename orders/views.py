@@ -1,4 +1,5 @@
 from decimal import Decimal
+
 from django.db import transaction
 from django.utils import timezone
 from django.core.exceptions import ValidationError
@@ -12,30 +13,38 @@ from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
 from config.permissions import IsAuthenticatedCustomer, IsAdminRole
 from inventory.models import Inventory
 from products.models import Product
-from .models import Order, OrderItem
-from .serializers import OrderSerializer, OrderCustomerSerializer, OrderAdminSerializer
-from notifications.utils import send_notification
 
+from .models import Order, OrderItem
+from .serializers import (
+    OrderSerializer,
+    OrderCustomerSerializer,
+    OrderAdminSerializer,
+)
+
+
+# ── Inline serializers for Swagger docs ──────────────────────────
 
 class OrderItemCreateSerializer(serializers.Serializer):
     product  = serializers.IntegerField(help_text='Product ID')
     quantity = serializers.IntegerField(help_text='Quantity', min_value=1)
 
 
+# ← UPDATED: added khalti to choices
 class OrderCreateSerializer(serializers.Serializer):
     customer_name  = serializers.CharField(help_text='Customer full name')
     delivery_city  = serializers.CharField(help_text='Delivery city')
     payment_method = serializers.ChoiceField(
-        choices=['esewa', 'cod'],
+        choices=['esewa', 'khalti', 'cod'],  #added khalti
         default='cod',
-        help_text='esewa or cod'
+        help_text='esewa, khalti or cod'
     )
     items = OrderItemCreateSerializer(many=True)
 
 
 class ConfirmPaymentSerializer(serializers.Serializer):
     transaction_id = serializers.CharField(
-        help_text='eSewa transaction ID from your eSewa app after payment.'
+        # mentions both eSewa and Khalti
+        help_text='Transaction ID from eSewa or Khalti app after payment.'
     )
 
 
@@ -58,61 +67,80 @@ class AdminUpdateOrderSerializer(serializers.Serializer):
     )
 
 
+# ###ViewSet 
+
 class OrderViewSet(viewsets.ModelViewSet):
 
     permission_classes = [IsAuthenticatedCustomer]
 
     queryset = Order.objects.select_related('user').prefetch_related(
-        'items', 'items__product', 'items__warehouse',
+        'items',
+        'items__product',
+        'items__warehouse',
     )
 
     def get_queryset(self):
         user = self.request.user
         if user.role == 'admin':
             return self.queryset
-        #  Customers only see their own orders
         return self.queryset.filter(user=user)
 
     def get_serializer_class(self):
-        # Admin gets full serializer with editable status fields
         if self.request.user.role == 'admin':
             return OrderAdminSerializer
-        # Customer gets read-only status fields
         return OrderCustomerSerializer
+
+    # ── Create Order ─────────────────────────────────────────────
 
     @extend_schema(
         summary='Create Order',
+        ##### description now mentions Khalti
         description=(
-            'Create a new order. For eSewa, pay on the app then '
-            'call /confirm-payment/ with your transaction ID.'
+            'Create a new order.\n\n'
+            '**COD**: Pay on delivery — no extra steps.\n\n'
+            '**eSewa**: Pay on eSewa app then call '
+            '`/confirm-payment/` with your transaction ID.\n\n'
+            '**Khalti**: Pay on Khalti app then call '       # ← NEW
+            '`/confirm-payment/` with your transaction ID.'  # ← NEW
         ),
         request=OrderCreateSerializer,
         responses={
             201: OrderCustomerSerializer,
             400: OpenApiResponse(description='Bad request.'),
         },
-        tags=['orders'],
+        tags=['Orders'],
         examples=[
             OpenApiExample(
-                'eSewa Payment',
+                'COD Order',
                 value={
-                    'customer_name': 'Rupa',
-                    'delivery_city': 'Kathmandu',
-                    'payment_method': 'esewa',
-                    'items': [{'product': 1, 'quantity': 1}]
+                    'customer_name':  'Purnima',
+                    'delivery_city':  'Kathmandu',
+                    'payment_method': 'cod',
+                    'items': [
+                        {'product': 1, 'quantity': 2},
+                        {'product': 3, 'quantity': 1},
+                    ]
                 },
                 request_only=True,
             ),
             OpenApiExample(
-                'Cash on Delivery',
+                'eSewa Order',
                 value={
-                    'customer_name': 'Rupa',
-                    'delivery_city': 'Pokhara',
-                    'payment_method': 'cod',
-                    'items': [
-                        {'product': 1, 'quantity': 2},
-                        {'product': 3, 'quantity': 1}
-                    ]
+                    'customer_name':  'Purnima',
+                    'delivery_city':  'Pokhara',
+                    'payment_method': 'esewa',
+                    'items': [{'product': 2, 'quantity': 1}]
+                },
+                request_only=True,
+            ),
+            ##NEW: Khalti added
+            OpenApiExample(
+                'Khalti Order',
+                value={
+                    'customer_name':  'Purnima',
+                    'delivery_city':  'Lalitpur',
+                    'payment_method': 'khalti',
+                    'items': [{'product': 4, 'quantity': 3}]
                 },
                 request_only=True,
             ),
@@ -135,10 +163,19 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        payment_method = data.get('payment_method', Order.PAYMENT_METHOD_COD)
-        if payment_method not in [Order.PAYMENT_METHOD_ESEWA, Order.PAYMENT_METHOD_COD]:
+        # added Khalti to valid payment methods
+        payment_method = data.get(
+            'payment_method',
+            Order.PAYMENT_METHOD_COD
+        )
+        if payment_method not in [
+            Order.PAYMENT_METHOD_ESEWA,
+            Order.PAYMENT_METHOD_KHALTI,  # ← NEW
+            Order.PAYMENT_METHOD_COD,
+        ]:
             return Response(
-                {'error': 'Invalid payment_method. Must be "esewa" or "cod".'},
+                ##### UPDATED: error message mentions Khalti
+                {'error': 'Invalid payment_method. Must be "esewa", "khalti" or "cod".'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -150,17 +187,17 @@ class OrderViewSet(viewsets.ModelViewSet):
             product_id   = item.get('product')
             quantity_val = item.get('quantity', 1)
 
+            if not product_id:
+                return Response(
+                    {'error': 'Each item must have a product ID.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
             try:
                 quantity = int(quantity_val)
             except (ValueError, TypeError):
                 return Response(
                     {'error': f'Invalid quantity for product ID {product_id}.'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            if not product_id:
-                return Response(
-                    {'error': 'Each item must have a product ID.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -188,7 +225,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 return Response(
                     {
                         'error': (
-                            f'{product.name} is not available in '
+                            f'"{product.name}" is not available in '
                             f'{delivery_city} with the requested quantity.'
                         )
                     },
@@ -220,10 +257,19 @@ class OrderViewSet(viewsets.ModelViewSet):
                 discount_amount = discount_amount,
                 total_price     = total_price,
                 status          = Order.STATUS_PENDING,
+                #### UPDATED: uses constant instead of raw string
+                payment_status  = Order.PAYMENT_STATUS_PENDING,
             )
         except ValidationError as e:
-            error_msg = e.message_dict if hasattr(e, 'message_dict') else str(e)
-            return Response({'error': error_msg}, status=status.HTTP_400_BAD_REQUEST)
+            error_msg = (
+                e.message_dict
+                if hasattr(e, 'message_dict')
+                else str(e)
+            )
+            return Response(
+                {'error': error_msg},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         for item_data in order_items:
             OrderItem.objects.create(
@@ -237,26 +283,37 @@ class OrderViewSet(viewsets.ModelViewSet):
             inv.quantity -= item_data['quantity']
             inv.save()
 
-        send_notification(order.user, 'order_placed', order.id)
-
         serializer    = OrderCustomerSerializer(order)
-        response_data = serializer.data
+        response_data = dict(serializer.data)
 
+        #  added Khalti payment instructions
         if payment_method == Order.PAYMENT_METHOD_ESEWA:
             response_data['payment_instructions'] = (
-                f'Your order total is NPR {total_price}. '
-                f'Please pay via eSewa app. '
-                f'After payment call POST /api/orders/{order.id}/confirm-payment/ '
+                f'Total: NPR {total_price}. '
+                f'Pay via eSewa app. '
+                f'Then call POST /api/orders/{order.id}/confirm-payment/ '
                 f'with your eSewa transaction ID.'
+            )
+        elif payment_method == Order.PAYMENT_METHOD_KHALTI:
+            response_data['payment_instructions'] = (
+                f'Total: NPR {total_price}. '
+                f'Pay via Khalti app. '
+                f'Then call POST /api/orders/{order.id}/confirm-payment/ '
+                f'with your Khalti transaction ID.'
             )
         else:
             response_data['payment_instructions'] = (
-                f'Pay cash upon delivery. '
-                f'Amount: NPR {total_price}.'
+                f'Pay NPR {total_price} cash upon delivery.'
             )
 
         headers = self.get_success_headers(serializer.data)
-        return Response(response_data, status=status.HTTP_201_CREATED, headers=headers)
+        return Response(
+            response_data,
+            status=status.HTTP_201_CREATED,
+            headers=headers
+        )
+
+    ###### Update Order (Admin) 
 
     @extend_schema(
         summary='Update Order (Admin only)',
@@ -267,42 +324,43 @@ class OrderViewSet(viewsets.ModelViewSet):
             400: OpenApiResponse(description='Invalid transition.'),
             403: OpenApiResponse(description='Admin only.'),
         },
-        tags=['orders'],
+        tags=['Orders'],
         examples=[
             OpenApiExample(
-                'Update status only',
+                'Move to Processing',
                 value={'status': 'processing'},
                 request_only=True,
             ),
             OpenApiExample(
-                'Update payment status only',
+                'Mark as Paid',
                 value={'payment_status': 'paid'},
                 request_only=True,
             ),
             OpenApiExample(
-                'Update both',
-                value={'status': 'processing', 'payment_status': 'paid'},
+                'Update Both',
+                value={
+                    'status':         'shipped',
+                    'payment_status': 'paid'
+                },
                 request_only=True,
             ),
         ]
     )
     def update(self, request, *args, **kwargs):
-        # Only admin can update
         if request.user.role != 'admin':
             return Response(
                 {'error': 'Only admins can update orders.'},
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        order      = self.get_object()
-        new_status = request.data.get('status')
+        order              = self.get_object()
+        new_status         = request.data.get('status')
         new_payment_status = request.data.get('payment_status')
 
-        # Validate status transition
         if new_status:
             valid_transitions = {
                 Order.STATUS_PENDING:    [Order.STATUS_PROCESSING, Order.STATUS_CANCELLED],
-                Order.STATUS_PROCESSING: [Order.STATUS_SHIPPED, Order.STATUS_CANCELLED],
+                Order.STATUS_PROCESSING: [Order.STATUS_SHIPPED,    Order.STATUS_CANCELLED],
                 Order.STATUS_SHIPPED:    [Order.STATUS_COMPLETED],
                 Order.STATUS_COMPLETED:  [],
                 Order.STATUS_CANCELLED:  [],
@@ -330,25 +388,20 @@ class OrderViewSet(viewsets.ModelViewSet):
                 setattr(order, timestamp_field, timezone.now())
             order.status = new_status
 
-            # Send notification
-            notification_map = {
-                Order.STATUS_PROCESSING: 'order_processing',
-                Order.STATUS_SHIPPED:    'order_shipped',
-                Order.STATUS_COMPLETED:  'order_completed',
-                Order.STATUS_CANCELLED:  'order_cancelled',
-            }
-            notification_type = notification_map.get(new_status)
-            if notification_type:
-                send_notification(order.user, notification_type, order.id)
-
-        # Validate payment status
+        ##### UPDATED: uses constants instead of raw strings
         if new_payment_status:
-            if order.payment_status == 'paid' and new_payment_status != 'paid':
+            if (
+                order.payment_status == Order.PAYMENT_STATUS_PAID and  
+                new_payment_status != Order.PAYMENT_STATUS_PAID        
+            ):
                 return Response(
-                    {'error': 'Cannot change payment status from "paid".'},
+                    {'error': 'Cannot change payment status once it is "paid".'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            if new_payment_status == 'paid' and order.payment_status != 'paid':
+            if (
+                new_payment_status == Order.PAYMENT_STATUS_PAID and   
+                order.payment_status != Order.PAYMENT_STATUS_PAID      
+            ):
                 order.paid_at = timezone.now()
             order.payment_status = new_payment_status
 
@@ -362,6 +415,8 @@ class OrderViewSet(viewsets.ModelViewSet):
     def partial_update(self, request, *args, **kwargs):
         return self.update(request, *args, **kwargs)
 
+    #### Delete Order (Admin) 
+
     def destroy(self, request, *args, **kwargs):
         if request.user.role != 'admin':
             return Response(
@@ -370,14 +425,17 @@ class OrderViewSet(viewsets.ModelViewSet):
             )
         return super().destroy(request, *args, **kwargs)
 
+    # ##Cancel Order 
+
     @extend_schema(
         summary='Cancel Order',
+        description='Cancel a pending or processing order. Inventory is restored.',
         responses={
             200: OpenApiResponse(description='Cancelled successfully.'),
             400: OpenApiResponse(description='Cannot cancel.'),
             403: OpenApiResponse(description='Not your order.'),
         },
-        tags=['orders']
+        tags=['Orders']
     )
     @transaction.atomic
     @action(detail=True, methods=['post'])
@@ -398,7 +456,14 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         if order.status == Order.STATUS_SHIPPED:
             return Response(
-                {'error': 'Cannot cancel an order that has been shipped.'},
+                {'error': 'Cannot cancel an order that has already been shipped.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # ## NEW: added check for completed orders
+        if order.status == Order.STATUS_COMPLETED:
+            return Response(
+                {'error': 'Cannot cancel a completed order.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -414,17 +479,18 @@ class OrderViewSet(viewsets.ModelViewSet):
         order.cancelled_at = timezone.now()
         order.save()
 
-        send_notification(order.user, 'order_cancelled', order.id)
-
         return Response(
             {'message': 'Order cancelled successfully. Inventory restored.'},
             status=status.HTTP_200_OK
         )
 
+    # Track Order 
+
     @extend_schema(
         summary='Track Order',
+        description='Get full timeline of order stages.',
         responses={200: OpenApiResponse(description='Tracking info.')},
-        tags=['orders']
+        tags=['Orders']
     )
     @action(
         detail=True,
@@ -463,7 +529,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 })
             elif order.status not in [
                 Order.STATUS_CANCELLED,
-                Order.STATUS_COMPLETED
+                Order.STATUS_COMPLETED,
             ]:
                 if stage_key != 'cancelled':
                     timeline.append({
@@ -486,24 +552,35 @@ class OrderViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK
         )
 
+    # Confirm Payment (eSewa / Khalti) 
+
     @extend_schema(
-        summary='Confirm eSewa Payment',
+        #UPDATED: title mentions both eSewa and Khalti
+        summary='Confirm eSewa / Khalti Payment',
         description=(
-            'After paying on eSewa app submit your '
-            'transaction ID to confirm payment.'
+            'After paying on eSewa or Khalti app, '
+            'submit your transaction ID to confirm payment.\n\n'
+            'Not needed for COD orders.'  
         ),
         request=ConfirmPaymentSerializer,
         responses={
             200: OpenApiResponse(description='Payment confirmed.'),
             400: OpenApiResponse(description='Invalid data.'),
+            403: OpenApiResponse(description='Not your order.'),
         },
-        tags=['orders'],
+        tags=['Orders'],
         examples=[
             OpenApiExample(
-                'Confirm Payment Example',
+                'Confirm eSewa Payment',
                 value={'transaction_id': 'ESEWA-TXN-123456789'},
                 request_only=True,
-            )
+            ),
+            # NEW: added Khalti 
+            OpenApiExample(
+                'Confirm Khalti Payment',
+                value={'transaction_id': 'KHALTI-TXN-987654321'},
+                request_only=True,
+            ),
         ]
     )
     @action(
@@ -521,13 +598,16 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        if order.payment_method != Order.PAYMENT_METHOD_ESEWA:
+        #  UPDATED: now checks COD instead of eSewa
+        # (allows both eSewa and Khalti to confirm)
+        if order.payment_method == Order.PAYMENT_METHOD_COD:
             return Response(
-                {'error': 'This order uses Cash on Delivery, not eSewa.'},
+                {'error': 'This order uses Cash on Delivery. No payment confirmation needed.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if order.payment_status == 'paid':
+        # UPDATED: uses constant
+        if order.payment_status == Order.PAYMENT_STATUS_PAID:
             return Response(
                 {'error': 'Payment already confirmed for this order.'},
                 status=status.HTTP_400_BAD_REQUEST
@@ -546,7 +626,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Check duplicate transaction ID
         if Order.objects.filter(
             payment_transaction_id=transaction_id
         ).exclude(id=order.id).exists():
@@ -555,22 +634,27 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        order.payment_status         = 'paid'
+        # UPDATED: uses constants
+        order.payment_status         = Order.PAYMENT_STATUS_PAID
         order.payment_transaction_id = transaction_id
         order.paid_at                = timezone.now()
 
-        #  Auto move to processing after payment
         if order.status == Order.STATUS_PENDING:
             order.status       = Order.STATUS_PROCESSING
             order.processed_at = timezone.now()
 
         order.save()
 
-        send_notification(order.user, 'order_processing', order.id)
+        #UPDATED: shows correct payment label for eSewa or Khalti
+        payment_label = (
+            'eSewa'
+            if order.payment_method == Order.PAYMENT_METHOD_ESEWA
+            else 'Khalti'
+        )
 
         return Response(
             {
-                'message':        'Payment confirmed! Your order is now being processed.',
+                'message':        f'{payment_label} payment confirmed! Your order is now being processed.',
                 'order_id':       order.id,
                 'payment_status': order.payment_status,
                 'order_status':   order.status,

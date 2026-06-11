@@ -22,12 +22,28 @@ class Order(models.Model):
         (STATUS_CANCELLED,  'Cancelled'),
     ]
 
-    PAYMENT_METHOD_ESEWA = 'esewa'
-    PAYMENT_METHOD_COD   = 'cod'
+    PAYMENT_METHOD_ESEWA  = 'esewa'
+    PAYMENT_METHOD_COD    = 'cod'
+    PAYMENT_METHOD_KHALTI = 'khalti'  #  NEW: added Khalti
 
     PAYMENT_METHOD_CHOICES = [
-        (PAYMENT_METHOD_ESEWA, 'eSewa'),
-        (PAYMENT_METHOD_COD,   'Cash on Delivery'),
+        (PAYMENT_METHOD_ESEWA,  'eSewa'),
+        (PAYMENT_METHOD_COD,    'Cash on Delivery'),
+        (PAYMENT_METHOD_KHALTI, 'Khalti'),  #  NEW: added Khalti choice
+    ]
+
+    #  NEW: payment status constants (was raw strings before)
+    PAYMENT_STATUS_PENDING  = 'pending'
+    PAYMENT_STATUS_PAID     = 'paid'
+    PAYMENT_STATUS_FAILED   = 'failed'
+    PAYMENT_STATUS_REFUNDED = 'refunded'
+
+    # NEW: payment status choices using constants
+    PAYMENT_STATUS_CHOICES = [
+        (PAYMENT_STATUS_PENDING,  'Pending'),
+        (PAYMENT_STATUS_PAID,     'Paid'),
+        (PAYMENT_STATUS_FAILED,   'Failed'),
+        (PAYMENT_STATUS_REFUNDED, 'Refunded'),
     ]
 
     user = models.ForeignKey(
@@ -55,35 +71,38 @@ class Order(models.Model):
         default=PAYMENT_METHOD_COD
     )
 
-    total_price = models.DecimalField(
-        max_digits=12, decimal_places=2, default=0
-    )
-
-    original_amount = models.DecimalField(
-        max_digits=12, decimal_places=2, default=0
-    )
-
-    discount_amount = models.DecimalField(
-        max_digits=12, decimal_places=2, default=0
-    )
-
+    #  UPDATED: now uses PAYMENT_STATUS_CHOICES and constant default
     payment_status = models.CharField(
         max_length=20,
-        default='pending',
-        choices=[
-            ('pending',  'Pending'),
-            ('paid',     'Paid'),
-            ('failed',   'Failed'),
-            ('refunded', 'Refunded'),
-        ]
+        choices=PAYMENT_STATUS_CHOICES,
+        default=PAYMENT_STATUS_PENDING
     )
 
+    # UPDATED: help text updated to mention Khalti
     payment_transaction_id = models.CharField(
         max_length=255,
         blank=True,
-        unique=True,
         null=True,
-        help_text='eSewa transaction ID after successful payment'
+        unique=True,
+        help_text='eSewa or Khalti transaction ID after successful payment'
+    )
+
+    original_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0
+    )
+
+    discount_amount = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0
+    )
+
+    total_price = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=0
     )
 
     processed_at = models.DateTimeField(null=True, blank=True)
@@ -113,18 +132,37 @@ class Order(models.Model):
         self.full_clean()
         super().save(*args, **kwargs)
 
+    # UPDATED: added payment_method to __str__
     def __str__(self):
-        return f'Order #{self.id} - {self.customer_name} - {self.status}'
+        return (
+            f'Order #{self.id} - '
+            f'{self.customer_name} - '
+            f'{self.status} - '
+            f'{self.payment_method}'
+        )
 
 
 class OrderItem(models.Model):
 
-    order     = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items')
-    product   = models.ForeignKey(Product, on_delete=models.CASCADE)
-    warehouse = models.ForeignKey(Warehouse, on_delete=models.CASCADE)
-    quantity  = models.PositiveIntegerField()
+    order = models.ForeignKey(
+        Order,
+        on_delete=models.CASCADE,
+        related_name='items'
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.CASCADE
+    )
+    warehouse = models.ForeignKey(
+        Warehouse,
+        on_delete=models.CASCADE
+    )
 
-    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    quantity   = models.PositiveIntegerField()
+    unit_price = models.DecimalField(
+        max_digits=10,
+        decimal_places=2
+    )
 
     class Meta:
         ordering = ['id']
@@ -140,4 +178,8 @@ class OrderItem(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f'Order #{self.order.id} - {self.product.name} x {self.quantity}'
+        return (
+            f'Order #{self.order.id} - '
+            f'{self.product.name} x '
+            f'{self.quantity}'
+        )

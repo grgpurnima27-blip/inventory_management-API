@@ -4,24 +4,41 @@ from .models import Order, OrderItem
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
-    product_name   = serializers.CharField(source='product.name', read_only=True)
-    warehouse_name = serializers.CharField(source='warehouse.name', read_only=True)
-    warehouse_city = serializers.CharField(source='warehouse.city', read_only=True)
+
+    product_name   = serializers.CharField(
+        source='product.name',
+        read_only=True
+    )
+    warehouse_name = serializers.CharField(
+        source='warehouse.name',
+        read_only=True
+    )
+    warehouse_city = serializers.CharField(
+        source='warehouse.city',
+        read_only=True
+    )
 
     class Meta:
         model  = OrderItem
         fields = [
-            'id', 'product', 'product_name',
-            'warehouse', 'warehouse_name', 'warehouse_city',
-            'quantity', 'unit_price',
+            'id',
+            'product',
+            'product_name',
+            'warehouse',
+            'warehouse_name',
+            'warehouse_city',
+            'quantity',
+            'unit_price',
         ]
 
 
 class OrderCustomerSerializer(serializers.ModelSerializer):
     """
-    Customer — can see their own order
-    including status and payment_status but cannot edit them
+    Customer serializer:
+    - Can see their own order
+    - Cannot edit status or payment_status
     """
+
     items = OrderItemSerializer(many=True, read_only=True)
     user  = serializers.StringRelatedField(read_only=True)
 
@@ -42,9 +59,9 @@ class OrderCustomerSerializer(serializers.ModelSerializer):
             'user',
             'customer_name',
             'delivery_city',
-            'status',                   
+            'status',
             'payment_method',
-            'payment_status',           
+            'payment_status',
             'original_amount',
             'discount_amount',
             'total_price',
@@ -58,18 +75,29 @@ class OrderCustomerSerializer(serializers.ModelSerializer):
             'items',
         ]
         read_only_fields = [
-            'id', 'status', 'payment_status',
-            'original_amount', 'discount_amount', 'total_price',
-            'payment_transaction_id', 'processed_at', 'shipped_at',
-            'completed_at', 'cancelled_at', 'paid_at', 'created_at',
+            'id',
+            'status',
+            'payment_status',
+            'original_amount',
+            'discount_amount',
+            'total_price',
+            'payment_transaction_id',
+            'processed_at',
+            'shipped_at',
+            'completed_at',
+            'cancelled_at',
+            'paid_at',
+            'created_at',
         ]
 
 
 class OrderAdminSerializer(serializers.ModelSerializer):
     """
-    Admin — sees everything and can
-    update status and payment_status
+    Admin serializer:
+    - Sees everything including updated_at
+    - Can update status and payment_status
     """
+
     items = OrderItemSerializer(many=True, read_only=True)
     user  = serializers.StringRelatedField(read_only=True)
 
@@ -90,9 +118,9 @@ class OrderAdminSerializer(serializers.ModelSerializer):
             'user',
             'customer_name',
             'delivery_city',
-            'status',                 
+            'status',
             'payment_method',
-            'payment_status',           
+            'payment_status',
             'original_amount',
             'discount_amount',
             'total_price',
@@ -107,10 +135,18 @@ class OrderAdminSerializer(serializers.ModelSerializer):
             'items',
         ]
         read_only_fields = [
-            'id', 'original_amount', 'discount_amount', 'total_price',
-            'payment_transaction_id', 'processed_at', 'shipped_at',
-            'completed_at', 'cancelled_at', 'paid_at',
-            'created_at', 'updated_at',
+            'id',
+            'original_amount',
+            'discount_amount',
+            'total_price',
+            'payment_transaction_id',
+            'processed_at',
+            'shipped_at',
+            'completed_at',
+            'cancelled_at',
+            'paid_at',
+            'created_at',
+            'updated_at',
         ]
 
     def validate_status(self, value):
@@ -120,7 +156,7 @@ class OrderAdminSerializer(serializers.ModelSerializer):
 
         valid_transitions = {
             Order.STATUS_PENDING:    [Order.STATUS_PROCESSING, Order.STATUS_CANCELLED],
-            Order.STATUS_PROCESSING: [Order.STATUS_SHIPPED, Order.STATUS_CANCELLED],
+            Order.STATUS_PROCESSING: [Order.STATUS_SHIPPED,    Order.STATUS_CANCELLED],
             Order.STATUS_SHIPPED:    [Order.STATUS_COMPLETED],
             Order.STATUS_COMPLETED:  [],
             Order.STATUS_CANCELLED:  [],
@@ -130,20 +166,25 @@ class OrderAdminSerializer(serializers.ModelSerializer):
         if value not in allowed:
             raise serializers.ValidationError(
                 f'Cannot move from "{order.status}" to "{value}". '
-                f'Allowed: {allowed}'
+                f'Allowed transitions: {allowed}'
             )
         return value
 
+    ### UPDATED: uses constants instead of raw strings
     def validate_payment_status(self, value):
         order = self.instance
         if not order:
             return value
-        if order.payment_status == 'paid' and value != 'paid':
+        if (
+            order.payment_status == Order.PAYMENT_STATUS_PAID and  # ← UPDATED
+            value != Order.PAYMENT_STATUS_PAID                     # ← UPDATED
+        ):
             raise serializers.ValidationError(
-                'Cannot change payment status from "paid".'
+                'Cannot change payment status once it is "paid".'  # ← UPDATED message
             )
         return value
 
+    ###3 UPDATED: uses constants instead of raw strings
     def update(self, instance, validated_data):
         from django.utils import timezone
 
@@ -163,7 +204,10 @@ class OrderAdminSerializer(serializers.ModelSerializer):
             instance.status = new_status
 
         if new_payment_status:
-            if new_payment_status == 'paid' and instance.payment_status != 'paid':
+            if (
+                new_payment_status == Order.PAYMENT_STATUS_PAID and      # ← UPDATED
+                instance.payment_status != Order.PAYMENT_STATUS_PAID     # ← UPDATED
+            ):
                 instance.paid_at = timezone.now()
             instance.payment_status = new_payment_status
 
@@ -171,5 +215,5 @@ class OrderAdminSerializer(serializers.ModelSerializer):
         return instance
 
 
-### Default serializer alias
+# Default serializer alias
 OrderSerializer = OrderCustomerSerializer
