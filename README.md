@@ -154,8 +154,8 @@ EMAIL_HOST_USER=your-email@gmail.com
 EMAIL_HOST_PASSWORD=your-app-password
 
 # Google OAuth
-CLIENT_ID=your-google-client-id
-CLIENT_SECRET=your-google-client-secret
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
 
 # Frontend URL (used in email links)
 FRONTEND_URL=http://localhost:3000
@@ -440,6 +440,97 @@ No payment confirmation required. Payment status stays `pending` until an admin 
 |---|---|
 | `admin` | Full API access, reports, inventory management |
 | `customer` | Place orders, reviews, wishlist, notifications |
+
+---
+
+## Google Sign-In Setup
+
+The API supports two Google OAuth flows: a **redirect flow** (browser-based) and a **token flow** (mobile/SPA — send a Google access token directly).
+
+### 1. Create Google OAuth Credentials
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project (or select an existing one)
+3. Navigate to **APIs & Services → Credentials**
+4. Click **Create Credentials → OAuth 2.0 Client ID**
+5. Set application type to **Web application**
+6. Add the following under **Authorized redirect URIs**:
+   ```
+   http://localhost:8000/api/auth/google/callback/      # development
+   https://your-domain.com/api/auth/google/callback/   # production
+   ```
+7. Copy the **Client ID** and **Client Secret**
+
+### 2. Configure Environment Variables
+
+Add these to your `.env` file:
+
+```env
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+```
+
+### 3. Auth Flows
+
+#### Flow A — Token Flow (Mobile / SPA)
+
+Use this when the frontend has already obtained a Google access token (e.g., via Google Sign-In SDK).
+
+```http
+POST /api/auth/google/login
+Content-Type: application/json
+
+{
+  "access_token": "<google-access-token>"
+}
+```
+
+Response:
+
+```json
+{
+  "access": "eyJ...",
+  "refresh": "eyJ...",
+  "user": {
+    "id": 5,
+    "username": "johndoe",
+    "email": "john@gmail.com",
+    "first_name": "John",
+    "last_name": "Doe",
+    "is_new_user": true,
+    "role": "customer"
+  }
+}
+```
+
+- If the email does not exist, a new account is created automatically with `is_email_verified = true`
+- The returned JWT tokens are identical to those from the regular login endpoint
+
+#### Flow B — Redirect Flow (Server-Side / Traditional OAuth)
+
+1. Get the authorization URL:
+
+```http
+GET /api/auth/google/auth-url
+```
+
+Response:
+
+```json
+{
+  "auth_url": "https://accounts.google.com/o/oauth2/v2/auth?client_id=...&redirect_uri=...&response_type=code&scope=email+profile"
+}
+```
+
+2. Redirect the user to `auth_url`
+3. Google redirects back to `/api/auth/google/callback/` with a `code` parameter
+4. Exchange the code for JWT tokens (handled server-side)
+
+### 4. Notes
+
+- New users created via Google Sign-In are assigned the `customer` role by default
+- Username is derived from the email prefix (e.g., `john` from `john@gmail.com`). If a username conflict exists, the full email is used
+- Google Sign-In accounts can also use the regular `/api/auth/change-password/` endpoint after setting a password manually
 
 ---
 
