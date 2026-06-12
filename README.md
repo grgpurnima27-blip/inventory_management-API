@@ -1,239 +1,501 @@
-# 📦 Professional Inventory & Order Management API
+# Inventory Management API
 
-A comprehensive, production-ready backend system built with **Django** and **Django REST Framework (DRF)**. This API manages product catalogs, warehouse stock allocations, shopping wishlists, customer reviews, dynamic discount coupons, and transactional order dispatch workflows with real-time analytics reports.
-
----
-
-## 🚀 Key Highlights
-
-*   **Secure JWT Authentication**: Powered by SimpleJWT with token blacklist support on logout and a 7-day access token lifetime.
-*   **Email Verification & Password Reset**: Enhances authentication security by requiring new registrations to verify their email before log in. Features automated, secure, time-limited tokens (24h expiry) for activation and password reset using formatted HTML templates.
-*   **Role-Based Access Control (RBAC)**: Fine-grained permissions allowing public read-only views for catalogs, customer-specific actions for order placement/tracking, and full-privileged access for admins.
-*   **Multi-Warehouse Stock Auto-Routing**: Orders automatically query inventory in the client's `delivery_city` and deduct stock allocations from the city's local warehouse.
-*   **Atomic Inventory Restoration**: When an order is cancelled, inventory quantities are securely returned to their respective warehouses within a database transaction block (`@transaction.atomic`).
-*   **eSewa Payment Integration**: Generates on-demand base64 encoded PNG QR codes tailored for Nepalese eSewa wallets (`esewa://payment`) containing exact amounts and order metadata.
-*   **Real-Time Order Notifications**: Generates localized customer notifications when an order is placed, processed, shipped, completed, or cancelled.
-*   **Built-in Data Caching**: Low-level database query caching implemented on heavy analytical views (`LocMemCache`), caching responses for 60 seconds.
-*   **Cloud Storage for Media**: Integrates with Cloudinary to handle dynamic uploads for product images and user profile avatars.
-*   **Interactive API Documentation**: Auto-generated Swagger & Redoc pages with interactive schema test consoles via `drf-spectacular`.
+A production-ready backend REST API for managing product inventory, multi-warehouse stock, orders, payments, and analytics — built with Django and Django REST Framework.
 
 ---
 
-## 🛠️ Tech Stack
+## Table of Contents
 
-*   **Framework**: [Django 6.0.5](https://www.djangoproject.com/)
-*   **REST Toolkit**: [Django REST Framework (DRF) 3.17.1](https://www.django-rest-framework.org/)
-*   **Auth Provider**: [DRF SimpleJWT 5.5.1](https://django-rest-framework-simplejwt.readthedocs.io/)
-*   **API Schema**: [drf-spectacular 0.29.0](https://drf-spectacular.readthedocs.io/)
-*   **Database**: SQLite (Development) / PostgreSQL-ready (with `psycopg2-binary`)
-*   **Media Storage**: Cloudinary (Product & Avatar images)
-*   **Utilities**: `qrcode` (QR Generation), `django-cors-headers` (CORS middleware), `django-filter` (Query parameters filtering)
+- [Features](#features)
+- [Tech Stack](#tech-stack)
+- [Architecture](#architecture)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Environment Variables](#environment-variables)
+  - [Running the Server](#running-the-server)
+- [API Reference](#api-reference)
+  - [Authentication](#authentication-apiauthentication)
+  - [Products](#products-apiproducts)
+  - [Warehouses](#warehouses-apiwarehouses)
+  - [Inventory](#inventory-apiinventory)
+  - [Orders](#orders-apiorders)
+  - [Reviews](#reviews-apireviews)
+  - [Wishlist](#wishlist-apiwishlist)
+  - [Coupons](#coupons-apicoupons)
+  - [Notifications](#notifications-apinotifications)
+  - [Reports](#reports-apireports)
+- [Payment Integrations](#payment-integrations)
+- [Role-Based Access Control](#role-based-access-control)
+- [Deployment](#deployment)
+- [API Documentation](#api-documentation)
 
 ---
 
-## 📐 Architecture & Entity Relationships
+## Features
 
-The codebase utilizes a clean relational architecture to coordinate users, products, warehouses, and orders. The diagram below illustrates these relationships:
+- **JWT Authentication** — SimpleJWT with token blacklist on logout; 7-day access / 30-day refresh
+- **Google OAuth 2.0** — Sign in with Google; auto-creates user accounts
+- **Role-Based Access Control** — `admin` and `customer` roles with fine-grained permissions
+- **Multi-Warehouse Inventory** — Stock auto-routed to the warehouse nearest the delivery city
+- **Atomic Transactions** — Inventory deducted and restored within `@transaction.atomic` blocks
+- **eSewa & Khalti Payments** — QR code generation for eSewa; transaction ID verification for both
+- **Coupon System** — Percentage and fixed-amount discount codes with usage limits and expiry
+- **Order Lifecycle** — Full tracking from `pending` → `processing` → `shipped` → `completed` with notifications
+- **Real-Time Notifications** — Auto-generated per order event; unread count endpoint
+- **Admin Analytics** — Cached reports: top products, revenue by city, sales charts, coupon usage
+- **Cloudinary Media Storage** — Product images and user avatars stored in the cloud
+- **Interactive API Docs** — Swagger UI and Redoc via `drf-spectacular`
 
-```mermaid
-erDiagram
-    CustomUser ||--o| Profile : "has profile (1:1)"
-    CustomUser ||--o{ Order : "places (1:N)"
-    CustomUser ||--o{ Review : "writes (1:N)"
-    CustomUser ||--o{ Wishlist : "saves (1:N)"
-    CustomUser ||--o{ Notification : "receives (1:N)"
+---
 
-    Product ||--o{ Inventory : "stocked in (1:N)"
-    Product ||--o{ OrderItem : "included in (1:N)"
-    Product ||--o{ Review : "reviewed in (1:N)"
-    Product ||--o{ Wishlist : "flagged in (1:N)"
+## Tech Stack
 
-    Warehouse ||--o{ Inventory : "stores (1:N)"
-    Warehouse ||--o{ OrderItem : "supplies (1:N)"
+| Layer | Technology |
+|---|---|
+| Framework | Django 6.0.5 + Django REST Framework 3.17.1 |
+| Authentication | SimpleJWT 5.5.1 + social-auth-app-django 5.9.0 |
+| Database | SQLite (dev) / PostgreSQL (production) |
+| Media Storage | Cloudinary |
+| API Docs | drf-spectacular 0.29.0 + Swagger/Redoc |
+| Server | Gunicorn 26.0.0 |
+| Payments | eSewa, Khalti (django-esewa 1.1.0) |
+| Caching | Django LocMemCache (60s TTL on reports) |
+| Deployment | Railway.app |
 
-    Order ||--|{ OrderItem : "comprises (1:N)"
-    
-    Coupon ||--o{ Order : "discounts (1:N)"
+---
+
+## Architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                     Client / Frontend                    │
+└───────────────────────┬──────────────────────────────────┘
+                        │ HTTPS
+┌───────────────────────▼──────────────────────────────────┐
+│              Django REST Framework API                   │
+│                                                          │
+│  ┌─────────┐  ┌──────────┐  ┌─────────┐  ┌──────────┐  │
+│  │accounts │  │ products │  │ orders  │  │ reports  │  │
+│  └─────────┘  └──────────┘  └─────────┘  └──────────┘  │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐  │
+│  │inventory │  │warehouses│  │  coupons │  │reviews │  │
+│  └──────────┘  └──────────┘  └──────────┘  └────────┘  │
+│  ┌──────────┐  ┌──────────────────────────────────────┐  │
+│  │ wishlist │  │           notifications              │  │
+│  └──────────┘  └──────────────────────────────────────┘  │
+└───────────────┬──────────────────────────────────────────┘
+                │
+    ┌───────────┴───────────┐
+    │                       │
+┌───▼────┐           ┌──────▼──────┐
+│SQLite  │           │  Cloudinary │
+│/ PgSQL │           │  (Media)    │
+└────────┘           └─────────────┘
+```
+
+**Entity Relationships**
+
+```
+CustomUser ──< Order ──< OrderItem >── Product >── Inventory >── Warehouse
+    │                                     │
+    ├──< Review                           └── Wishlist
+    ├──< Notification
+    └── Profile
 ```
 
 ---
 
-## ⚙️ Installation & Setup
+## Getting Started
 
-Follow these steps to run the development server locally:
+### Prerequisites
 
-### 1. Clone & Initialize Environment
+- Python 3.12+
+- pip
+- Git
+
+### Installation
+
 ```bash
 # Clone the repository
-git clone https://github.com/your-username/inventory-management-API.git
+git clone https://github.com/grgpurnima27/inventory-management-API.git
 cd inventory-management-API
 
-# Create a virtual environment
+# Create and activate a virtual environment
 python -m venv venv
+source venv/bin/activate        # macOS/Linux
+venv\Scripts\activate           # Windows
 
-# Activate the virtual environment
-# On Windows (PowerShell):
-.\venv\Scripts\Activate.ps1
-# On macOS/Linux:
-source venv/bin/activate
-```
-
-### 2. Install Dependencies
-```bash
+# Install dependencies
 pip install -r requirements.txt
-```
 
-### 3. Environment Variables Setup
-Create a `.env` file in the root directory (or update `config/settings.py` to use `os.getenv` or `decouple`) with your custom API keys:
-```env
-# Django
-DJANGO_SECRET_KEY=your-django-insecure-key
-DEBUG=True
-
-# Cloudinary Integration
-CLOUDINARY_CLOUD_NAME=your_cloudinary_cloud_name
-CLOUDINARY_API_KEY=your_cloudinary_api_key
-CLOUDINARY_API_SECRET=your_cloudinary_api_secret
-
-# Image Fetch Fallback (Pexels)
-PEXELS_API_KEY=your_pexels_api_key
-```
-
-### 4. Database Migrations
-```bash
-# Apply database schemas
+# Apply database migrations
 python manage.py migrate
 
-# Create a superuser / admin account
+# Create a superuser (admin)
 python manage.py createsuperuser
 ```
 
-### 5. Start Server
+### Environment Variables
+
+Create a `.env` file in the project root:
+
+```env
+DJANGO_SECRET_KEY=your-secret-key-here
+DEBUG=True
+
+# Cloudinary (media storage)
+CLOUDINARY_CLOUD_NAME=your-cloud-name
+CLOUDINARY_API_KEY=your-api-key
+CLOUDINARY_API_SECRET=your-api-secret
+
+# Email (Gmail SMTP)
+EMAIL_HOST_USER=your-email@gmail.com
+EMAIL_HOST_PASSWORD=your-app-password
+
+# Google OAuth
+CLIENT_ID=your-google-client-id
+CLIENT_SECRET=your-google-client-secret
+
+# Frontend URL (used in email links)
+FRONTEND_URL=http://localhost:3000
+
+# PostgreSQL (production only)
+DATABASE_URL=postgresql://user:password@host:port/dbname
+
+# Railway (production only)
+RAILWAY_PUBLIC_DOMAIN=your-app.railway.app
+
+# Optional: Pexels API (product image seeding)
+PEXELS_API_KEY=your-pexels-api-key
+```
+
+### Running the Server
+
 ```bash
 python manage.py runserver
 ```
-The application will be accessible at: `http://127.0.0.1:8000/`
+
+API is available at `http://localhost:8000/api/`
+Swagger UI at `http://localhost:8000/swagger/`
 
 ---
 
-## ⚡ Custom Management Commands
+## API Reference
 
-The system features utility scripts designed to seed or enrich system data:
+All authenticated endpoints require the `Authorization: Bearer <access_token>` header.
 
-### **Generate Dynamic Initials-Based Avatars**
-Automatically generates personalized avatar URLs using [ui-avatars.com](https://ui-avatars.com/) for all registered users who have not uploaded a profile picture:
-```bash
-python manage.py generate_avatars
+### Authentication (`/api/auth/`)
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| POST | `/register/` | Public | Register a new customer account |
+| POST | `/login/` | Public | Login and receive JWT tokens |
+| POST | `/admin/login/` | Public | Admin-only login |
+| POST | `/token/refresh/` | Public | Refresh an expired access token |
+| POST | `/forgot-password/` | Public | Request a password reset email |
+| POST | `/reset-password/{token}/` | Public | Reset password using email token |
+| GET | `/me/` | Auth | Get the current user's profile |
+| POST | `/change-password/` | Auth | Update password |
+| POST | `/logout/` | Auth | Blacklist the refresh token |
+| POST | `/google/login` | Public | Sign in with a Google access token |
+| GET | `/google/auth-url` | Public | Get the Google OAuth redirect URL |
+
+**Register**
+```http
+POST /api/auth/register/
+Content-Type: application/json
+
+{
+  "username": "johndoe",
+  "email": "john@example.com",
+  "password": "SecurePass123"
+}
 ```
 
-### **Auto-Fetch Product Stock Images**
-Scrapes high-quality product images from Pexels API matching the product's name/category, uploads them to Cloudinary, and links them to products lacking images:
-```bash
-# Fetch missing images
-python manage.py fetch_product_image
-
-# Overwrite existing product images
-python manage.py fetch_product_image --overwrite
-```
-
----
-
-## 📊 API Endpoint Catalog
-
-A detailed listing of core endpoints. All endpoints under `/api/` require headers formatted as `Authorization: Bearer <your_jwt_access_token>` unless specified as **Public**.
-
-### 🔑 Authentication (`/api/auth/`)
-| Method | Endpoint | Access | Description |
-| :--- | :--- | :--- | :--- |
-| `POST` | `/register/` | **Public** | Registers a new client with the default `customer` role and triggers a verification email. |
-| `GET` | `/verify-email/{token}/` | **Public** | Verifies the registration token and activates the account. |
-| `POST` | `/login/` | **Public** | Authenticates a user (requires verified email) and returns JWT access/refresh tokens. |
-| `POST` | `/admin/login/` | **Public** | Authenticates an admin (requires verified email) and returns JWT (fails if role != 'admin'). |
-| `POST` | `/forgot-password/` | **Public** | Submits an email address to request a password reset link. |
-| `POST` | `/reset-password/{token}/` | **Public** | Submits a new password along with the reset token to update credentials. |
-| `POST` | `/token/refresh/` | **Public** | Submits a refresh token to generate a new active access token. |
-| `GET` | `/me/` | Authenticated | Retrieves profile overview of the logged-in user. |
-| `POST` | `/change-password/` | Authenticated | Updates account password. |
-| `POST` | `/logout/` | Authenticated | Submits a refresh token to blacklist it, terminating the session. |
-
-### 📦 Products & Warehouses
-| Method | Endpoint | Access | Description |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/api/products/` | **Public** | Lists products. Supports filtering by query params & pagination. |
-| `POST` | `/api/products/` | Admin Only | Registers a product. (MIME checking: JPEG/PNG/WebP, size < 2MB). |
-| `GET/PUT/DELETE`| `/api/products/{id}/` | Mix (Admin Write) | Retrieve product details (Public), update, or delete it (Admin only). |
-| `GET` | `/api/warehouses/` | **Public** | Lists warehouses including GPS coordinates. |
-| `POST` | `/api/warehouses/` | Admin Only | Registers a new warehouse. |
-| `GET/PUT/DELETE`| `/api/warehouses/{id}/` | Mix (Admin Write) | Retrieve warehouse details (Public), edit, or remove it (Admin only). |
-
-### ⚙️ Inventory & Storage (`/api/inventory/`)
-| Method | Endpoint | Access | Description |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/` | Admin Only | Retrieves all product stock records in various warehouses. |
-| `POST` | `/` | Admin Only | Allocates quantity of a product to a specific warehouse. |
-| `GET/PUT/DELETE`| `/{id}/` | Admin Only | Retrieve individual inventory record, adjust stock, or remove mappings. |
-
-### 🛒 Customer Orders (`/api/orders/`)
-| Method | Endpoint | Access | Description |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/` | Owner / Admin | List placed orders (Admins see all; Customers see only their own). |
-| `POST` | `/` | Authenticated | Places a new order (with auto-routing to local city warehouse & coupon checks). |
-| `GET` | `/{id}/` | Owner / Admin | Retrieve full order breakdown including purchase items and pricing. |
-| `POST` | `/{id}/cancel/` | Owner / Admin | Cancels order. Stock is automatically returned to original warehouses. |
-| `GET` | `/{id}/track/` | Authenticated | Retrieves linear progress status timeline with timestamps. |
-| `PATCH`| `/{id}/update-status/`| Admin Only | Transitions status along: `pending` → `processing` → `shipped` → `completed`. |
-| `GET` | `/{id}/payment-qr/` | Authenticated | Generates a base64 encoded PNG QR code for direct eSewa payment. |
-
-### 🎟️ Coupons, Reviews & Wishlist
-| Method | Endpoint | Access | Description |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/api/coupons/` | Admin Only | List all promotional discount codes. |
-| `POST` | `/api/coupons/` | Admin Only | Create a percentage/fixed amount coupon (auto-uppercases code). |
-| `GET/PUT/DELETE`| `/api/coupons/{id}/` | Admin Only | Retrieve, edit, or delete promotional coupons. |
-| `GET` | `/api/reviews/` | **Public** | List reviews left by customers on items. |
-| `POST` | `/api/reviews/` | Authenticated | Leave a 1 to 5 star rating (constrained to 1 review per product per customer). |
-| `GET` | `/api/wishlist/` | Authenticated | Retrieve wishlist catalog for the logged-in customer. |
-| `POST` | `/api/wishlist/` | Authenticated | Adds a product to the user's wishlist (unique constraint). |
-
-### 🔔 Notifications (`/api/notifications/`)
-| Method | Endpoint | Access | Description |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/` | Authenticated | List all notifications for the logged-in user. |
-| `GET` | `/unread-count/` | Authenticated | Get the count of unread notifications. |
-| `POST` | `/mark-all-read/` | Authenticated | Mark all notifications as read. |
-| `PATCH`| `/{id}/read/` | Authenticated | Mark a single notification as read. |
-| `DELETE`| `/{id}/` | Authenticated | Delete a single notification. |
-
-### 📈 Business Analytics Reports (`/api/reports/`) — *Admin Only*
-All reports utilize DRF query-level optimization and are **cached for 60 seconds** to avoid database bottlenecks:
-1.  **Inventory Summary (`/inventory-summary/`)**: Returns system totals including total unique products, bulk inventory stock counts, low-stock warnings (quantity < 5), and active order statuses.
-2.  **Top Products (`/top-products/?days=30`)**: Lists the top 10 best-selling products by quantity sold and gross revenue generated in the last `X` days.
-3.  **Revenue by City (`/revenue-by-city/?days=30`)**: Breaks down total revenue, successful orders, and average order value grouped by delivery cities.
-4.  **Top Customers (`/top-customers/?days=30`)**: Ranks the top 10 customers based on cumulative completed order values.
-5.  **Sales Trend Chart (`/sales-chart/?period=daily&days=30`)**: Generates chart-ready dates and sales quantities grouped daily or monthly.
-6.  **Coupon Usage (`/coupon-usage/`)**: Displays all coupons, usage counts, maximum bounds, active state, and remaining discount allocations.
-
----
-
-## 📚 API Validation Rules & Guidelines
-
-1.  **Product Name**: Minimum 3 characters. Price must be > 0.
-2.  **Warehouse Name**: Minimum 3 characters. City name must be valid.
-3.  **Order Routing constraint**: An order item must correspond to a product currently stocked in a warehouse located in the client's `delivery_city` (e.g. "Kathmandu"). If stock is insufficient in that city's warehouse, order validation fails early.
-4.  **Review Stars**: Integers in range `[1, 5]`.
-5.  **Coupon Limits**: Percentage discounts cannot exceed 100%. Coupons validate expiry dates, active state, and usage limits before deducting order totals.
-
----
-
-## 📝 Running Tests
-Validate business constraints and transaction flows by executing the Django test runner:
-```bash
-python manage.py test
+**Login response**
+```json
+{
+  "access": "eyJ...",
+  "refresh": "eyJ...",
+  "user": {
+    "id": 1,
+    "username": "johndoe",
+    "email": "john@example.com",
+    "role": "customer"
+  }
+}
 ```
 
 ---
 
-## 📖 API Documentation Interfaces
-Once the server is running, developer documentation is served automatically:
-*   **Swagger Interactive Console**: [http://127.0.0.1:8000/swagger/](http://127.0.0.1:8000/swagger/)
-*   **Raw OpenApi Schema (JSON)**: [http://127.0.0.1:8000/api/schema/](http://127.0.0.1:8000/api/schema/)
+### Products (`/api/products/`)
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| GET | `/` | Public | List all products (paginated) |
+| POST | `/` | Admin | Create a product |
+| GET | `/{id}/` | Public | Get a single product |
+| PUT | `/{id}/` | Admin | Update a product |
+| DELETE | `/{id}/` | Admin | Delete a product |
+
+**Query Parameters**
+
+| Param | Type | Description |
+|---|---|---|
+| `search` | string | Filter by name, category, or SKU |
+| `ordering` | string | Sort by `price`, `name`, or `created_at` (prefix `-` for descending) |
+| `page` | int | Pagination |
+
+---
+
+### Warehouses (`/api/warehouses/`)
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| GET | `/` | Public | List warehouses |
+| POST | `/` | Admin | Create a warehouse |
+| GET | `/{id}/` | Public | Get a single warehouse |
+| PUT | `/{id}/` | Admin | Update a warehouse |
+| DELETE | `/{id}/` | Admin | Delete a warehouse |
+
+---
+
+### Inventory (`/api/inventory/`)
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| GET | `/` | Admin | List all inventory records |
+| POST | `/` | Admin | Allocate stock to a warehouse |
+| GET | `/{id}/` | Admin | Get an inventory record |
+| PUT | `/{id}/` | Admin | Adjust stock quantity |
+| DELETE | `/{id}/` | Admin | Remove an inventory record |
+
+---
+
+### Orders (`/api/orders/`)
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| GET | `/` | Auth | List orders (customers see own; admins see all) |
+| POST | `/` | Auth | Place a new order |
+| GET | `/{id}/` | Owner/Admin | Get full order details |
+| PUT/PATCH | `/{id}/` | Admin | Update order or payment status |
+| DELETE | `/{id}/` | Admin | Delete an order |
+| POST | `/{id}/cancel/` | Owner/Admin | Cancel an order and restore inventory |
+| GET | `/{id}/track/` | Auth | Get order status timeline |
+| POST | `/{id}/confirm-payment/` | Auth | Confirm eSewa/Khalti payment |
+
+**Create Order**
+```http
+POST /api/orders/
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "customer_name": "John Doe",
+  "delivery_city": "Kathmandu",
+  "payment_method": "esewa",
+  "coupon_code": "SAVE10",
+  "items": [
+    { "product": 3, "quantity": 2 },
+    { "product": 7, "quantity": 1 }
+  ]
+}
+```
+
+**Order Status Flow**
+
+```
+pending → processing → shipped → completed
+    └──────────────────────────→ cancelled
+```
+
+**Payment Status Flow**
+
+```
+pending → paid
+       → failed
+       → refunded
+```
+
+**Confirm Payment**
+```http
+POST /api/orders/{id}/confirm-payment/
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "transaction_id": "TXN-ABC12345"
+}
+```
+
+---
+
+### Reviews (`/api/reviews/`)
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| GET | `/` | Public | List all reviews |
+| POST | `/` | Auth | Submit a product review |
+| GET | `/{id}/` | Public | Get a single review |
+
+One review allowed per customer per product. Rating must be 1–5.
+
+---
+
+### Wishlist (`/api/wishlist/`)
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| GET | `/` | Auth | Get current user's wishlist |
+| POST | `/` | Auth | Add a product to wishlist |
+| DELETE | `/{id}/` | Auth | Remove a product from wishlist |
+
+---
+
+### Coupons (`/api/coupons/`)
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| GET | `/` | Admin | List all coupons |
+| POST | `/` | Admin | Create a coupon |
+| GET | `/{id}/` | Admin | Get a coupon |
+| PUT | `/{id}/` | Admin | Update a coupon |
+| DELETE | `/{id}/` | Admin | Delete a coupon |
+
+**Coupon fields**
+
+| Field | Type | Description |
+|---|---|---|
+| `code` | string | Unique code (auto-uppercased) |
+| `discount_type` | `percentage` / `fixed` | Discount type |
+| `discount_value` | decimal | Amount or percentage (≤ 100 for percentage) |
+| `minimum_order_amount` | decimal | Minimum cart value required |
+| `max_uses` | int | Total usage limit |
+| `expires_at` | datetime | Optional expiry |
+
+---
+
+### Notifications (`/api/notifications/`)
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| GET | `/` | Auth | List all notifications |
+| GET | `/unread-count/` | Auth | Get count of unread notifications |
+| POST | `/mark-all-read/` | Auth | Mark all notifications as read |
+| PATCH | `/{id}/read/` | Auth | Mark a single notification as read |
+| DELETE | `/{id}/` | Auth | Delete a notification |
+
+Notifications are auto-created on order events: `order_placed`, `order_processing`, `order_shipped`, `order_completed`, `order_cancelled`.
+
+---
+
+### Reports (`/api/reports/`)
+
+All report endpoints are admin-only and cached for 60 seconds.
+
+| Endpoint | Query Params | Description |
+|---|---|---|
+| `/inventory-summary/` | — | Product count, total stock, low-stock alerts, order counts |
+| `/top-products/` | `?days=30` | Top 10 products by quantity sold and revenue |
+| `/revenue-by-city/` | `?days=30` | Revenue breakdown by delivery city |
+| `/top-customers/` | `?days=30` | Top 10 customers by total order value |
+| `/sales-chart/` | `?period=daily&days=30` | Time-series sales data (daily or monthly) |
+| `/coupon-usage/` | — | All coupons with usage counts and active status |
+
+---
+
+## Payment Integrations
+
+### eSewa
+
+1. Customer creates an order with `"payment_method": "esewa"`
+2. Response includes a base64-encoded QR code image (`esewa://payment?...`)
+3. Customer scans the QR code and pays via the eSewa app
+4. Customer submits the transaction ID to `POST /api/orders/{id}/confirm-payment/`
+5. API verifies uniqueness of the transaction ID and marks payment as `paid`
+6. Order status automatically advances to `processing`
+
+### Khalti
+
+Same flow as eSewa — create order with `"payment_method": "khalti"`, confirm with a transaction ID.
+
+### Cash on Delivery (COD)
+
+No payment confirmation required. Payment status stays `pending` until an admin manually marks it `paid`.
+
+---
+
+## Role-Based Access Control
+
+| Permission | Description |
+|---|---|
+| `IsAdminOrReadOnly` | Public GET; POST/PUT/DELETE requires admin |
+| `IsAdminRole` | All methods require admin |
+| `IsAuthenticatedCustomer` | Any logged-in user |
+| `IsOwnerOrAdmin` | Object-level: owner or admin only |
+
+| Role | Default |
+|---|---|
+| `admin` | Full API access, reports, inventory management |
+| `customer` | Place orders, reviews, wishlist, notifications |
+
+---
+
+## Deployment
+
+This project is deployed on **Railway.app**.
+
+**Build configuration** (`railway.json`):
+
+```json
+{
+  "build": { "builder": "NIXPACKS" },
+  "deploy": {
+    "startCommand": "gunicorn inventory_management.wsgi --bind 0.0.0.0:$PORT",
+    "releaseCommand": "python manage.py migrate && python manage.py ensure_superuser && python manage.py verify_all_users",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  }
+}
+```
+
+**Python version** (`runtime.txt`): `python-3.12.10`
+
+**Static files** are served via WhiteNoise with compressed manifest storage.
+
+---
+
+## API Documentation
+
+Interactive API documentation is auto-generated via `drf-spectacular`:
+
+| URL | Description |
+|---|---|
+| `/swagger/` | Swagger UI with interactive console |
+| `/redoc/` | Redoc formatted documentation |
+| `/api/schema/` | Raw OpenAPI 3.0 JSON schema |
+
+All endpoints include request/response schema, authentication requirements, and example payloads.
+
+---
+
+## Validation Rules
+
+| Entity | Rules |
+|---|---|
+| Product | Name ≥ 3 chars; price > 0; SKU must be unique |
+| Warehouse | Name ≥ 3 chars, unique; city required |
+| Inventory | Quantity ≥ 0; product + warehouse combination must be unique |
+| Order | customer_name ≥ 3 chars; delivery_city ≥ 2 chars |
+| OrderItem | Quantity > 0; sufficient stock must exist in delivery city warehouse |
+| Review | Rating 1–5; one review per user per product |
+| Coupon | discount_value > 0; percentage ≤ 100; code auto-uppercased |
+| Transaction ID | Must be unique across all orders; required for eSewa/Khalti confirmation |
+
+---
+
+## License
+
+MIT
