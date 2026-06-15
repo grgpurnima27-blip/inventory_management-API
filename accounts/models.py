@@ -67,11 +67,7 @@ class Profile(models.Model):
     class Meta:
         ordering = ['-created_at']
 
-    def get_avatar_url(self):
-        #### If user uploaded avatar use Cloudinary URL
-        if self.avatar:
-            return self.avatar.url
-        #### Otherwise generate from initials using UI Avatars
+    def _generate_avatar_url(self):
         name = self.user.get_full_name() or self.user.username
         initials = '+'.join(name.split()[:2])
         return (
@@ -83,6 +79,16 @@ class Profile(models.Model):
             f'&bold=true'
             f'&rounded=true'
         )
+
+    def save(self, *args, **kwargs):
+        if not self.avatar and not self.avatar_url:
+            self.avatar_url = self._generate_avatar_url()
+        super().save(*args, **kwargs)
+
+    def get_avatar_url(self):
+        if self.avatar:
+            return self.avatar.url
+        return self.avatar_url or self._generate_avatar_url()
 
     def __str__(self):
         return f'{self.user.username} profile'
