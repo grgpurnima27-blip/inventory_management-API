@@ -29,12 +29,11 @@ class OrderItemCreateSerializer(serializers.Serializer):
     quantity = serializers.IntegerField(help_text='Quantity', min_value=1)
 
 
-# ← UPDATED: added khalti to choices
+# ← UPDATED: added khalti to choices; delivery_city auto-filled from profile
 class OrderCreateSerializer(serializers.Serializer):
     customer_name  = serializers.CharField(help_text='Customer full name')
-    delivery_city  = serializers.CharField(help_text='Delivery city')
     payment_method = serializers.ChoiceField(
-        choices=['esewa', 'khalti', 'cod'],  #added khalti
+        choices=['esewa', 'khalti', 'cod'],
         default='cod',
         help_text='esewa, khalti or cod'
     )
@@ -114,7 +113,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                 'COD Order',
                 value={
                     'customer_name':  'Purnima',
-                    'delivery_city':  'Kathmandu',
                     'payment_method': 'cod',
                     'items': [
                         {'product': 1, 'quantity': 2},
@@ -127,18 +125,15 @@ class OrderViewSet(viewsets.ModelViewSet):
                 'eSewa Order',
                 value={
                     'customer_name':  'Purnima',
-                    'delivery_city':  'Pokhara',
                     'payment_method': 'esewa',
                     'items': [{'product': 2, 'quantity': 1}]
                 },
                 request_only=True,
             ),
-            ##NEW: Khalti added
             OpenApiExample(
                 'Khalti Order',
                 value={
                     'customer_name':  'Purnima',
-                    'delivery_city':  'Lalitpur',
                     'payment_method': 'khalti',
                     'items': [{'product': 4, 'quantity': 3}]
                 },
@@ -179,7 +174,18 @@ class OrderViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        delivery_city   = data.get('delivery_city', 'Kathmandu')
+        delivery_city = data.get('delivery_city', '').strip()
+        if not delivery_city:
+            try:
+                delivery_city = request.user.profile.city or ''
+            except Exception:
+                delivery_city = ''
+        if not delivery_city:
+            return Response(
+                {'error': 'No delivery city set. Provide delivery_city in the request or update your city in your profile.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         order_items     = []
         original_amount = Decimal('0.00')
 

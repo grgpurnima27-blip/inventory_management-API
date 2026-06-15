@@ -76,6 +76,7 @@ class OrderCustomerSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id',
+            'delivery_city',
             'status',
             'payment_status',
             'original_amount',

@@ -27,12 +27,13 @@ class RegisterSerializer(serializers.ModelSerializer):
         write_only=True,
         min_length=8
     )
+    city = serializers.CharField(max_length=100)
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'password']
+        fields = ['id', 'username', 'email', 'password', 'city']
         read_only_fields = ['id']
-    
+
     def validate_username(self, value):
         if User.objects.filter(username=value).exists():
             raise serializers.ValidationError(
@@ -48,14 +49,15 @@ class RegisterSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
+        city = validated_data.pop('city')
         user = User.objects.create_user(
             username=validated_data['username'],
             email=validated_data['email'],
             password=validated_data['password'],
             role='customer'
-            ## is_email_verified=False 
+            ## is_email_verified=False
         )
-        Profile.objects.create(user=user)
+        Profile.objects.create(user=user, city=city)
         return user
 
 
