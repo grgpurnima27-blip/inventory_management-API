@@ -4,6 +4,68 @@ from rest_framework.permissions import (
 )
 
 
+class IsPlatformAdmin(BasePermission):
+    """
+    Platform-level admin only (is_staff=True).
+    Can create/manage Tenants. Cannot touch any vendor data.
+    Created via Django's createsuperuser command.
+    """
+    def has_permission(self, request, view):
+        return bool(
+            request.user and
+            request.user.is_authenticated and
+            request.user.is_staff
+        )
+
+
+class IsVendorAdmin(BasePermission):
+    """
+    Grants write access to store data for:
+      - The tenant owner (Tenant.owner == request.user)
+      - TenantMember with role 'manager' or 'staff'
+
+    Viewer-role members and unrelated users are denied.
+    Requires X-Tenant-Slug header to resolve the tenant.
+    """
+    def has_permission(self, request, view):
+        if not (request.user and request.user.is_authenticated):
+            return False
+        tenant = getattr(request, 'tenant', None)
+        if not tenant:
+            return False
+        # Tenant owner
+        try:
+            if request.user.owned_tenant == tenant:
+                return True
+        except Exception:
+            pass
+        # Employees with write-level roles
+        from tenants.models import TenantMember
+        return TenantMember.objects.filter(
+            tenant=tenant,
+            user=request.user,
+            is_active=True,
+            role__in=[TenantMember.ROLE_MANAGER, TenantMember.ROLE_STAFF]
+        ).exists()
+
+
+class IsTenantOwner(BasePermission):
+    """
+    Only the owner of the current request's tenant.
+    Used for managing TenantMembers — only the store owner can add/remove staff.
+    """
+    def has_permission(self, request, view):
+        if not (request.user and request.user.is_authenticated):
+            return False
+        tenant = getattr(request, 'tenant', None)
+        if not tenant:
+            return False
+        try:
+            return request.user.owned_tenant == tenant
+        except Exception:
+            return False
+
+
 class IsAdminOrReadOnly(BasePermission):
     """
     PUBLIC (no token):

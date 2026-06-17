@@ -49,6 +49,12 @@ class ReviewWriteSerializer(serializers.ModelSerializer):
         request = self.context['request']
         user = request.user
         product = data['product']
+        tenant = getattr(request, 'tenant', None)
+
+        if tenant and product.tenant_id != tenant.id:
+            raise serializers.ValidationError({
+                'product': 'This product does not belong to the current store.'
+            })
 
         # Check if user already reviewed this product (on create only)
         if self.instance is None:
@@ -57,15 +63,16 @@ class ReviewWriteSerializer(serializers.ModelSerializer):
                     'product': 'You have already reviewed this product.'
                 })
 
-        # Only allow review if user has purchased the product
+        # Only allow review if user has purchased the product from this tenant
         from orders.models import Order, OrderItem
-        has_purchased = OrderItem.objects.filter(
+        qs = OrderItem.objects.filter(
             order__user=user,
             order__status=Order.STATUS_COMPLETED,
             product=product
-        ).exists()
-
-        if not has_purchased:
+        )
+        if tenant:
+            qs = qs.filter(order__tenant=tenant)
+        if not qs.exists():
             raise serializers.ValidationError({
                 'product': 'You can only review products you have purchased.'
             })

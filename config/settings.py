@@ -149,6 +149,8 @@ INSTALLED_APPS = [
     "corsheaders",
     "social_django", #social authentication such as Google OAuth
 
+    "tenants",
+
     "products",
     "warehouses",
     "inventory",
@@ -174,6 +176,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "social_django.middleware.SocialAuthExceptionMiddleware",
+    "tenants.middleware.TenantMiddleware",
 ]
 
 # URLS
@@ -313,19 +316,12 @@ SPECTACULAR_SETTINGS = {
         "persistAuthorization": True,
     },
 
-    "SECURITY": [
-        {"bearerAuth": []}
+    # Inject X-Tenant-Slug as a named security scheme so it appears
+    # in Swagger UI's Authorize dialog alongside the JWT Bearer field.
+    "POSTPROCESSING_HOOKS": [
+        "drf_spectacular.hooks.postprocess_schema_enums",
+        "tenants.openapi.add_tenant_auth_to_schema",
     ],
-
-    "COMPONENTS": {
-        "securitySchemes": {
-            "bearerAuth": {
-                "type": "http",
-                "scheme": "bearer",
-                "bearerFormat": "JWT",
-            }
-        }
-    },
 }
 
 # Google OAuth Settings

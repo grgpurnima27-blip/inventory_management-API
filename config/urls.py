@@ -50,6 +50,9 @@ urlpatterns = [
     # Admin Panel
     path('admin/', admin.site.urls),
 
+    # Tenants (vendors)
+    path('api/', include('tenants.urls')),
+
     # Main API
     path('api/', include(router.urls)),
 

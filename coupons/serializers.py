@@ -35,9 +35,13 @@ class ApplyCouponSerializer(serializers.Serializer):
     def validate(self, data):
         code = data['code'].upper()
         order_amount = data['order_amount']
+        tenant = getattr(self.context.get('request'), 'tenant', None)
 
         try:
-            coupon = Coupon.objects.get(code=code)
+            qs = Coupon.objects.filter(code=code)
+            if tenant:
+                qs = qs.filter(tenant=tenant)
+            coupon = qs.get()
         except Coupon.DoesNotExist:
             raise serializers.ValidationError({
                 'code': 'Coupon code not found.'

@@ -4,6 +4,7 @@ from django.core.exceptions import ValidationError
 
 from products.models import Product
 from warehouses.models import Warehouse
+from tenants.models import TenantManager
 
 
 class Order(models.Model):
@@ -45,6 +46,14 @@ class Order(models.Model):
         (PAYMENT_STATUS_FAILED,   'Failed'),
         (PAYMENT_STATUS_REFUNDED, 'Refunded'),
     ]
+
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='orders',
+        null=True,
+        blank=True,
+    )
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -113,6 +122,8 @@ class Order(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    objects = TenantManager()
 
     class Meta:
         ordering = ['-created_at']

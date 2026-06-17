@@ -45,7 +45,11 @@ class NotificationMarkAllReadView(APIView):
     serializer_class = NotificationSerializer
 
     def post(self, request):
-        Notification.objects.filter(user=request.user, is_read=False).update(is_read=True)
+        tenant = getattr(request, 'tenant', None)
+        qs = Notification.objects.filter(user=request.user, is_read=False)
+        if tenant:
+            qs = qs.filter(tenant=tenant)
+        qs.update(is_read=True)
         return Response({'detail': 'All notifications marked as read.'})
 
 

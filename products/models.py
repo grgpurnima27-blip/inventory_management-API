@@ -2,8 +2,18 @@ from django.db import models
 from django.core.exceptions import ValidationError
 from cloudinary.models import CloudinaryField
 
+from tenants.models import TenantManager
+
 
 class Product(models.Model):
+
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='products',
+        null=True,
+        blank=True,
+    )
 
     name = models.CharField(
         max_length=100
@@ -11,8 +21,9 @@ class Product(models.Model):
 
     sku = models.CharField(
         max_length=75,
-        unique=True
     )
+
+    objects = TenantManager()
 
     category = models.CharField(
         max_length=100
@@ -40,6 +51,12 @@ class Product(models.Model):
 
     class Meta:
         ordering = ['-updated_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tenant', 'sku'],
+                name='unique_tenant_sku'
+            )
+        ]
 
     def clean(self):
 

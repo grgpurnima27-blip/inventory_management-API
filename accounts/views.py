@@ -14,6 +14,8 @@ from .serializers import (
     RegisterSerializer,
     LoginSerializer,
     AdminLoginSerializer,
+    VendorLoginSerializer,
+    EmployeeLoginSerializer,
     ChangePasswordSerializer,
     LogoutSerializer,
     ProfileSerializer,
@@ -77,6 +79,55 @@ class AdminLoginView(APIView):
 
     def post(self, request):
         serializer = AdminLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(serializer.validated_data, status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    tags=['auth'],
+    summary='Vendor / Store Owner Login',
+    description=(
+        'Login for store owners (vendor admins). '
+        'The response includes your store slug — paste it into the '
+        '**tenantAuth** field in Swagger Authorize to unlock all store endpoints.'
+    ),
+    request=VendorLoginSerializer,
+    responses={
+        200: OpenApiResponse(description='Login successful. Returns token + store info.'),
+        400: OpenApiResponse(description='Invalid credentials or not a store owner.'),
+    },
+)
+class VendorLoginView(APIView):
+    permission_classes = [AllowAny]
+    serializer_class = VendorLoginSerializer
+
+    def post(self, request):
+        serializer = VendorLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(serializer.validated_data, status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    tags=['auth'],
+    summary='Employee Login',
+    description=(
+        'Login for store employees (manager / staff / viewer). '
+        'You must be added to the store by the owner first via POST /api/tenant-members/. '
+        'The response includes your role and the store slug — paste the slug into '
+        'the **tenantAuth** field in Swagger Authorize.'
+    ),
+    request=EmployeeLoginSerializer,
+    responses={
+        200: OpenApiResponse(description='Login successful. Returns token + store info + your role.'),
+        400: OpenApiResponse(description='Invalid credentials or not a member of this store.'),
+    },
+)
+class EmployeeLoginView(APIView):
+    permission_classes = [AllowAny]
+    serializer_class = EmployeeLoginSerializer
+
+    def post(self, request):
+        serializer = EmployeeLoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         return Response(serializer.validated_data, status=status.HTTP_200_OK)
 

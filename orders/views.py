@@ -11,6 +11,7 @@ from rest_framework.response import Response
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
 
 from config.permissions import IsAuthenticatedCustomer, IsAdminRole
+from tenants.mixins import TenantViewMixin
 from inventory.models import Inventory
 from products.models import Product
 
@@ -22,14 +23,14 @@ from .serializers import (
 )
 
 
-# ── Inline serializers for Swagger docs ──────────────────────────
+# Inline serializers for Swagger docs 
 
 class OrderItemCreateSerializer(serializers.Serializer):
     product  = serializers.IntegerField(help_text='Product ID')
     quantity = serializers.IntegerField(help_text='Quantity', min_value=1)
 
 
-# ← UPDATED: added khalti to choices; delivery_city auto-filled from profile
+# UPDATED: added khalti to choices; delivery_city auto-filled from profile
 class OrderCreateSerializer(serializers.Serializer):
     customer_name  = serializers.CharField(help_text='Customer full name')
     payment_method = serializers.ChoiceField(
@@ -68,7 +69,7 @@ class AdminUpdateOrderSerializer(serializers.Serializer):
 
 # ###ViewSet 
 
-class OrderViewSet(viewsets.ModelViewSet):
+class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
 
     permission_classes = [IsAuthenticatedCustomer]
 
@@ -79,17 +80,18 @@ class OrderViewSet(viewsets.ModelViewSet):
     )
 
     def get_queryset(self):
+        qs = super().get_queryset()  # applies TenantViewMixin tenant filter
         user = self.request.user
         if user.role == 'admin':
-            return self.queryset
-        return self.queryset.filter(user=user)
+            return qs
+        return qs.filter(user=user)
 
     def get_serializer_class(self):
         if self.request.user.role == 'admin':
             return OrderAdminSerializer
         return OrderCustomerSerializer
 
-    # ── Create Order ─────────────────────────────────────────────
+    # Create Order 
 
     @extend_schema(
         summary='Create Order',
@@ -99,8 +101,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             '**COD**: Pay on delivery — no extra steps.\n\n'
             '**eSewa**: Pay on eSewa app then call '
             '`/confirm-payment/` with your transaction ID.\n\n'
-            '**Khalti**: Pay on Khalti app then call '       # ← NEW
-            '`/confirm-payment/` with your transaction ID.'  # ← NEW
+            '**Khalti**: Pay on Khalti app then call '       #  NEW
+            '`/confirm-payment/` with your transaction ID.'  # NEW
         ),
         request=OrderCreateSerializer,
         responses={
@@ -144,6 +146,7 @@ class OrderViewSet(viewsets.ModelViewSet):
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         data = request.data
+        tenant = getattr(request, 'tenant', None)
 
         if not data.get('customer_name'):
             return Response(
@@ -214,18 +217,24 @@ class OrderViewSet(viewsets.ModelViewSet):
                 )
 
             try:
-                product = Product.objects.get(id=int(product_id))
+                product_qs = Product.objects.filter(id=int(product_id))
+                if tenant:
+                    product_qs = product_qs.filter(tenant=tenant)
+                product = product_qs.get()
             except Product.DoesNotExist:
                 return Response(
                     {'error': f'Product with id {product_id} does not exist.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            inventory = Inventory.objects.select_for_update().filter(
+            inventory_qs = Inventory.objects.select_for_update().filter(
                 product=product,
                 warehouse__city__iexact=delivery_city,
                 quantity__gte=quantity
-            ).first()
+            )
+            if tenant:
+                inventory_qs = inventory_qs.filter(tenant=tenant)
+            inventory = inventory_qs.first()
 
             if not inventory:
                 return Response(
@@ -255,6 +264,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         try:
             order = Order.objects.create(
+                tenant          = tenant,
                 user            = request.user,
                 customer_name   = data.get('customer_name'),
                 delivery_city   = delivery_city,
@@ -263,7 +273,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                 discount_amount = discount_amount,
                 total_price     = total_price,
                 status          = Order.STATUS_PENDING,
-                #### UPDATED: uses constant instead of raw string
                 payment_status  = Order.PAYMENT_STATUS_PENDING,
             )
         except ValidationError as e:

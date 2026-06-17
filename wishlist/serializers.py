@@ -53,6 +53,12 @@ class WishlistWriteSerializer(serializers.ModelSerializer):
     def validate(self, data):
         user = self.context['request'].user
         product = data['product']
+        tenant = getattr(self.context['request'], 'tenant', None)
+
+        if tenant and product.tenant_id != tenant.id:
+            raise serializers.ValidationError({
+                'product': 'This product does not belong to the current store.'
+            })
 
         if Wishlist.objects.filter(user=user, product=product).exists():
             raise serializers.ValidationError({

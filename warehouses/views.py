@@ -1,18 +1,17 @@
 from rest_framework import viewsets
 from rest_framework.permissions import AllowAny
-from config.permissions import IsAdminOrReadOnly
+from config.permissions import IsVendorAdmin
+from tenants.mixins import TenantViewMixin
 from .models import Warehouse
 from .serializers import WarehouseSerializer
 
 
-class WarehouseViewSet(viewsets.ModelViewSet):
+class WarehouseViewSet(TenantViewMixin, viewsets.ModelViewSet):
 
     queryset = Warehouse.objects.all()
     serializer_class = WarehouseSerializer
 
     def get_permissions(self):
-        # PUBLIC — no token required
         if self.action in ['list', 'retrieve']:
             return [AllowAny()]
-        # ADMIN only — token required
-        return [IsAdminOrReadOnly()]
+        return [IsVendorAdmin()]

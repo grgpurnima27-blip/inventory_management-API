@@ -1,18 +1,16 @@
-from django.shortcuts import render
-
-# Create your views here.
 from rest_framework import viewsets, status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
 
+from tenants.mixins import TenantViewMixin
 from .models import Review
 from .serializers import ReviewReadSerializer, ReviewWriteSerializer
 
 
 @extend_schema(tags=['reviews'])
-class ReviewViewSet(viewsets.ModelViewSet):
+class ReviewViewSet(TenantViewMixin, viewsets.ModelViewSet):
 
     queryset = Review.objects.select_related(
         'user', 'product'

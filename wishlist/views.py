@@ -19,13 +19,15 @@ class WishlistViewSet(viewsets.ModelViewSet):
     queryset = Wishlist.objects.none()
 
     def get_queryset(self):
-        # TO Check if this is for Swagger documentation
         if getattr(self, 'swagger_fake_view', False):
             return Wishlist.objects.none()
-        # Each user only sees their own wishlist
-        return Wishlist.objects.filter(
+        tenant = getattr(self.request, 'tenant', None)
+        qs = Wishlist.objects.filter(
             user=self.request.user
         ).select_related('product')
+        if tenant:
+            qs = qs.filter(product__tenant=tenant)
+        return qs
 
     def get_serializer_class(self):
         if self.action in ['list', 'retrieve']:
@@ -74,7 +76,11 @@ class WishlistViewSet(viewsets.ModelViewSet):
         url_path='clear'
     )
     def clear(self, request):
-        count, _ = Wishlist.objects.filter(user=request.user).delete()
+        tenant = getattr(request, 'tenant', None)
+        qs = Wishlist.objects.filter(user=request.user)
+        if tenant:
+            qs = qs.filter(product__tenant=tenant)
+        count, _ = qs.delete()
         return Response(
             {'message': f'Wishlist cleared. {count} item(s) removed.'},
             status=status.HTTP_200_OK

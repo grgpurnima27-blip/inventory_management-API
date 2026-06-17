@@ -1,12 +1,23 @@
 from django.db import models
-
-# Create your models here.
-from django.db import models
 from django.core.exceptions import ValidationError
 from django.conf import settings
 from products.models import Product
 
+from tenants.models import TenantManager
+
+
 class Review(models.Model):
+
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='reviews',
+        null=True,
+        blank=True,
+    )
+
+    objects = TenantManager()
+
     RATING_CHOICES=[
         (1, '1 - Very Bad'),
         (2, '2 - Bad'),

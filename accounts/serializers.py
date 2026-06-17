@@ -71,12 +71,12 @@ class LoginSerializer(serializers.Serializer):
         )
         if not user:
             raise serializers.ValidationError('Invalid username or password.')
-        
+
         if not user.is_email_verified:
-            raise serializers.ValidationError('Email is not verified. Please check your email to verify your account.')
+            raise serializers.ValidationError('Email is not verified.')
 
         refresh = RefreshToken.for_user(user)
-        return {
+        response = {
             'refresh': str(refresh),
             'access': str(refresh.access_token),
             'user': {
@@ -87,9 +87,45 @@ class LoginSerializer(serializers.Serializer):
             }
         }
 
+        # If the user owns a store, return their tenant so the client
+        # knows which X-Tenant-Slug to send for future requests.
+        try:
+            tenant = user.owned_tenant
+            response['tenant'] = {
+                'id': tenant.id,
+                'name': tenant.name,
+                'slug': tenant.slug,
+                'your_role': 'owner',
+                'note': f'Use header  X-Tenant-Slug: {tenant.slug}  in all store requests.',
+            }
+        except Exception:
+            # Check if this user is a member of any store
+            from tenants.models import TenantMember
+            memberships = list(
+                TenantMember.objects.filter(user=user, is_active=True)
+                .select_related('tenant')
+            )
+            if memberships:
+                response['memberships'] = [
+                    {
+                        'tenant_id':   m.tenant.id,
+                        'tenant_name': m.tenant.name,
+                        'tenant_slug': m.tenant.slug,
+                        'role':        m.role,
+                        'note':        f'Use header  X-Tenant-Slug: {m.tenant.slug}',
+                    }
+                    for m in memberships
+                ]
+
+        return response
+
 
 class AdminLoginSerializer(serializers.Serializer):
-
+    """
+    Login for vendor admins (store owners) and platform admins.
+    Returns tenant info so the client knows the X-Tenant-Slug to use.
+    For employees, use POST /api/tenants/login/ instead.
+    """
     username = serializers.CharField()
     password = serializers.CharField(write_only=True)
 
@@ -102,12 +138,11 @@ class AdminLoginSerializer(serializers.Serializer):
             raise serializers.ValidationError('Invalid username or password.')
         if user.role != 'admin':
             raise serializers.ValidationError('Admin access only.')
-        
         if not user.is_email_verified:
-            raise serializers.ValidationError('Email is not verified. Please check your email to verify your account.')
+            raise serializers.ValidationError('Email is not verified.')
 
         refresh = RefreshToken.for_user(user)
-        return {
+        response = {
             'refresh': str(refresh),
             'access': str(refresh.access_token),
             'user': {
@@ -117,6 +152,29 @@ class AdminLoginSerializer(serializers.Serializer):
                 'role': user.role,
             }
         }
+
+        # Platform admin (is_staff) — no tenant, manages the platform itself
+        if user.is_staff:
+            response['account_type'] = 'platform_admin'
+            response['note'] = 'You manage the platform. Use POST /api/tenants/ to create stores.'
+            return response
+
+        # Vendor admin — return their owned store
+        try:
+            tenant = user.owned_tenant
+            response['account_type'] = 'vendor_admin'
+            response['tenant'] = {
+                'id': tenant.id,
+                'name': tenant.name,
+                'slug': tenant.slug,
+                'your_role': 'owner',
+                'note': f'Use header  X-Tenant-Slug: {tenant.slug}  in all store requests.',
+            }
+        except Exception:
+            response['account_type'] = 'admin_no_tenant'
+            response['note'] = 'No store found. Ask a platform admin to create a tenant for you.'
+
+        return response
 
 
 class ChangePasswordSerializer(serializers.Serializer):
@@ -201,6 +259,120 @@ class ProfileSerializer(serializers.ModelSerializer):
                         'Only JPEG, PNG, and WebP images are allowed.'
                     )
         return value
+
+
+class VendorLoginSerializer(serializers.Serializer):
+    """
+    Login for store owners (vendor admins).
+    The account must have role='admin' and own a tenant store.
+    Returns the JWT token and the tenant slug to use as X-Tenant-Slug.
+    """
+    username = serializers.CharField()
+    password = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        user = authenticate(username=attrs['username'], password=attrs['password'])
+        if not user:
+            raise serializers.ValidationError({'username': 'Invalid username or password.'})
+        if not user.is_email_verified:
+            raise serializers.ValidationError({'username': 'Email is not verified.'})
+        if user.role != 'admin':
+            raise serializers.ValidationError({'username': 'This account does not have vendor admin access.'})
+
+        try:
+            tenant = user.owned_tenant
+        except Exception:
+            raise serializers.ValidationError({
+                'username': 'No store found for this account. Contact the platform admin.'
+            })
+
+        refresh = RefreshToken.for_user(user)
+        return {
+            'refresh': str(refresh),
+            'access':  str(refresh.access_token),
+            'user': {
+                'id':       user.id,
+                'username': user.username,
+                'email':    user.email,
+            },
+            'store': {
+                'id':         tenant.id,
+                'name':       tenant.name,
+                'slug':       tenant.slug,
+                'your_role':  'owner',
+            },
+            'next_step': (
+                f'Copy the slug and set  X-Tenant-Slug: {tenant.slug}  '
+                f'in the Authorize dialog (tenantAuth field) before using store endpoints.'
+            ),
+        }
+
+
+class EmployeeLoginSerializer(serializers.Serializer):
+    """
+    Login for store employees (manager / staff / viewer).
+    The user must be added to the store by the owner via POST /api/tenant-members/.
+    Returns the JWT token, the employee's role, and the tenant slug.
+    """
+    username    = serializers.CharField()
+    password    = serializers.CharField(write_only=True)
+    tenant_slug = serializers.SlugField(
+        help_text='Slug of the store you work at (e.g. techmart). Ask your store owner for this.'
+    )
+
+    def validate(self, attrs):
+        user = authenticate(username=attrs['username'], password=attrs['password'])
+        if not user:
+            raise serializers.ValidationError({'username': 'Invalid username or password.'})
+        if not user.is_email_verified:
+            raise serializers.ValidationError({'username': 'Email is not verified.'})
+
+        from tenants.models import Tenant, TenantMember
+
+        try:
+            tenant = Tenant.objects.get(slug=attrs['tenant_slug'], is_active=True)
+        except Tenant.DoesNotExist:
+            raise serializers.ValidationError({'tenant_slug': 'Store not found or inactive.'})
+
+        # Owners must use the vendor login endpoint
+        try:
+            if user.owned_tenant == tenant:
+                raise serializers.ValidationError({
+                    'username': 'You are the store owner. Use the Vendor Login endpoint instead.'
+                })
+        except Exception:
+            pass
+
+        try:
+            membership = TenantMember.objects.get(tenant=tenant, user=user, is_active=True)
+        except TenantMember.DoesNotExist:
+            raise serializers.ValidationError({
+                'tenant_slug': (
+                    'You are not a member of this store. '
+                    'Ask your store owner to add you via /api/tenant-members/.'
+                )
+            })
+
+        refresh = RefreshToken.for_user(user)
+        return {
+            'refresh': str(refresh),
+            'access':  str(refresh.access_token),
+            'user': {
+                'id':       user.id,
+                'username': user.username,
+                'email':    user.email,
+            },
+            'store': {
+                'id':         tenant.id,
+                'name':       tenant.name,
+                'slug':       tenant.slug,
+                'your_role':  membership.role,
+            },
+            'next_step': (
+                f'Copy the slug and set  X-Tenant-Slug: {tenant.slug}  '
+                f'in the Authorize dialog (tenantAuth field) before using store endpoints.'
+            ),
+        }
 
 
 class ForgotPasswordSerializer(serializers.Serializer):

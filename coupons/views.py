@@ -8,13 +8,14 @@ from rest_framework.response import Response
 
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
 
-from config.permissions import IsAdminRole
+from config.permissions import IsVendorAdmin
+from tenants.mixins import TenantViewMixin
 from .models import Coupon
 from .serializers import CouponSerializer, ApplyCouponSerializer
 
 
 @extend_schema(tags=['coupons'])
-class CouponViewSet(viewsets.ModelViewSet):
+class CouponViewSet(TenantViewMixin, viewsets.ModelViewSet):
 
     queryset = Coupon.objects.all()
     serializer_class = CouponSerializer
@@ -23,7 +24,7 @@ class CouponViewSet(viewsets.ModelViewSet):
         # Only admin can create/update/delete coupons
         if self.action in ['apply']:
             return [IsAuthenticated()]
-        return [IsAdminRole()]
+        return [IsVendorAdmin()]
 
     @extend_schema(
         summary='Create Coupon (Admin only)',

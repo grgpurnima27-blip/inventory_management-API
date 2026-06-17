@@ -10,13 +10,14 @@ import cloudinary.uploader
 
 from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
 
-from config.permissions import IsAdminRole
+from config.permissions import IsVendorAdmin
+from tenants.mixins import TenantViewMixin
 from .models import Product
 from .serializers import ProductReadSerializer, ProductWriteSerializer
 
 
 @extend_schema(tags=['products'])
-class ProductViewSet(viewsets.ModelViewSet):
+class ProductViewSet(TenantViewMixin, viewsets.ModelViewSet):
 
     queryset = Product.objects.all()
     parser_classes = [MultiPartParser, FormParser, JSONParser]
@@ -32,7 +33,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in ['list', 'retrieve']:
             return [AllowAny()]
-        return [IsAdminRole()]
+        return [IsVendorAdmin()]
 
     def get_serializer_class(self):
         if self.action in ['list', 'retrieve']:
@@ -130,7 +131,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         detail=True,
         methods=['post'],
         parser_classes=[MultiPartParser, FormParser],
-        permission_classes=[IsAdminRole],
+        permission_classes=[IsVendorAdmin],
         url_path='upload-image'
     )
     def upload_image(self, request, pk=None):
@@ -193,7 +194,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     @action(
         detail=True,
         methods=['post'],
-        permission_classes=[IsAdminRole],
+        permission_classes=[IsVendorAdmin],
         url_path='fetch-image'
     )
     def fetch_image(self, request, pk=None):

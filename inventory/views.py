@@ -1,11 +1,12 @@
 from rest_framework import viewsets, filters
 from django_filters.rest_framework import DjangoFilterBackend
-from config.permissions import IsAdminRole
+from config.permissions import IsVendorAdmin
+from tenants.mixins import TenantViewMixin
 from .models import Inventory
 from .serializers import InventorySerializer
 
 
-class InventoryViewSet(viewsets.ModelViewSet):
+class InventoryViewSet(TenantViewMixin, viewsets.ModelViewSet):
 
     queryset = Inventory.objects.select_related(
         'product',
@@ -15,7 +16,7 @@ class InventoryViewSet(viewsets.ModelViewSet):
     serializer_class = InventorySerializer
 
     # ADMIN only — full access
-    permission_classes = [IsAdminRole]
+    permission_classes = [IsVendorAdmin]
 
     filter_backends = [
         DjangoFilterBackend,

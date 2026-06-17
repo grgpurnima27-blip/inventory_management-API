@@ -1,9 +1,8 @@
 from django.db import models
-
-# Create your models here.
-from django.db import models
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+
+from tenants.models import TenantManager
 
 
 class Coupon(models.Model):
@@ -16,10 +15,19 @@ class Coupon(models.Model):
         (TYPE_FIXED, 'Fixed Amount'),
     ]
 
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='coupons',
+        null=True,
+        blank=True,
+    )
+
     code = models.CharField(
         max_length=50,
-        unique=True
     )
+
+    objects = TenantManager()
 
     discount_type = models.CharField(
         max_length=20,
@@ -61,6 +69,12 @@ class Coupon(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tenant', 'code'],
+                name='unique_tenant_coupon_code'
+            )
+        ]
 
     def clean(self):
         errors = {}

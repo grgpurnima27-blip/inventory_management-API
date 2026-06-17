@@ -3,9 +3,18 @@ from django.core.exceptions import ValidationError
 
 from products.models import Product
 from warehouses.models import Warehouse
+from tenants.models import TenantManager
 
 
 class Inventory(models.Model):
+
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='inventories',
+        null=True,
+        blank=True,
+    )
 
     product = models.ForeignKey(
         Product,
@@ -31,14 +40,16 @@ class Inventory(models.Model):
         auto_now=True
     )
 
+    objects = TenantManager()
+
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=['product', 'warehouse'],
-                name='unique_product_warehouse'
+                fields=['tenant', 'product', 'warehouse'],
+                name='unique_tenant_product_warehouse'
             )
         ]
-        ordering = ['-updated_at']  # first newest update
+        ordering = ['-updated_at']
 
     def clean(self):
         if self.quantity < 0:

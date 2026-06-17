@@ -1,13 +1,24 @@
 from django.db import models
 from django.core.exceptions import ValidationError
 
+from tenants.models import TenantManager
+
 
 class Warehouse(models.Model):
 
+    tenant = models.ForeignKey(
+        'tenants.Tenant',
+        on_delete=models.CASCADE,
+        related_name='warehouses',
+        null=True,
+        blank=True,
+    )
+
     name = models.CharField(
         max_length=100,
-        unique=True
     )
+
+    objects = TenantManager()
 
     city = models.CharField(
         max_length=100
@@ -41,6 +52,12 @@ class Warehouse(models.Model):
 
     class Meta:
         ordering = ['-updated_at']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['tenant', 'name'],
+                name='unique_tenant_warehouse_name'
+            )
+        ]
 
     def clean(self):
 
