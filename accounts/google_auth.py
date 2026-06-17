@@ -24,17 +24,12 @@ class GoogleAuthView(APIView):
 
     @extend_schema(
         summary='Google Sign In',
-        description=(
-            'Authenticate with a Google OAuth2 access token. Returns JWT tokens. '
-            'Creates a new account if the email does not exist — '
-            '`city` is required for new accounts.'
-        ),
+        description='Authenticate user with a Google OAuth2 access token. Returns JWT tokens. Creates a new account if the email does not exist.',
         request={
             'application/json': {
                 'type': 'object',
                 'properties': {
                     'access_token': {'type': 'string', 'description': 'Google OAuth access token'},
-                    'city': {'type': 'string', 'description': 'User city (required for new accounts)'},
                 },
                 'required': ['access_token']
             }
@@ -48,7 +43,6 @@ class GoogleAuthView(APIView):
     )
     def post(self, request):
         access_token = request.data.get('access_token')
-        city = request.data.get('city', '').strip()
 
         if not access_token:
             return Response(
@@ -83,13 +77,6 @@ class GoogleAuthView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        is_new_email = not User.objects.filter(email=email).exists()
-        if is_new_email and not city:
-            return Response(
-                {'error': 'city is required for new accounts.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
         user, created = User.objects.get_or_create(
             email=email,
             defaults={
@@ -100,7 +87,7 @@ class GoogleAuthView(APIView):
             }
         )
         if created:
-            Profile.objects.create(user=user, city=city)
+            Profile.objects.create(user=user)
 
         refresh = RefreshToken.for_user(user)
 

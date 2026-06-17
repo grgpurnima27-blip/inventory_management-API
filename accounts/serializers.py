@@ -27,11 +27,10 @@ class RegisterSerializer(serializers.ModelSerializer):
         write_only=True,
         min_length=8
     )
-    city = serializers.CharField(max_length=100)
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'password', 'city']
+        fields = ['id', 'username', 'email', 'password']
         read_only_fields = ['id']
 
     def validate_username(self, value):
@@ -49,7 +48,6 @@ class RegisterSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
-        city = validated_data.pop('city')
         user = User.objects.create_user(
             username=validated_data['username'],
             email=validated_data['email'],
@@ -57,7 +55,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             role='customer'
             ## is_email_verified=False
         )
-        Profile.objects.create(user=user, city=city)
+        Profile.objects.create(user=user)
         return user
 
 
