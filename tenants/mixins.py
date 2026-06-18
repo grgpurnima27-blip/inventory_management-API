@@ -13,7 +13,10 @@ class TenantViewMixin:
 
     def get_tenant(self):
         tenant = getattr(self.request, 'tenant', None)
-        if tenant is None:
+        # `not tenant` forces the SimpleLazyObject to evaluate its wrapped
+        # value — `is None` alone won't work because request.tenant is always
+        # a SimpleLazyObject, never None itself.
+        if not tenant:
             raise PermissionDenied(
                 'Tenant could not be identified. '
                 'Send the X-Tenant-Slug header or log in as a vendor.'
@@ -23,7 +26,10 @@ class TenantViewMixin:
     def get_queryset(self):
         qs = super().get_queryset()
         tenant = getattr(self.request, 'tenant', None)
-        if tenant is not None:
+        # Use `if tenant:` — forces SimpleLazyObject evaluation.
+        # `if tenant is not None:` would always be True because request.tenant
+        # is always a SimpleLazyObject wrapper, even when it wraps None.
+        if tenant:
             return qs.filter(tenant=tenant)
         return qs
 
