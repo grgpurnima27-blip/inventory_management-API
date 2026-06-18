@@ -210,8 +210,8 @@ if DATABASE_URL:
     DATABASES = {
         "default": dj_database_url.parse(
             DATABASE_URL,
-            conn_max_age=600, ### keep connection alive for 10 minutes
-            ssl_require=True, ### force encrypted connection 
+            conn_max_age=0,   # Neon serverless: don't reuse connections across requests
+            ssl_require=True, # Neon requires SSL — already in URL but this is a safety net
         )
     }
 else:
