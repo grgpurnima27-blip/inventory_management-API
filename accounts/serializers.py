@@ -261,6 +261,67 @@ class ProfileSerializer(serializers.ModelSerializer):
         return value
 
 
+class VendorRegisterSerializer(serializers.Serializer):
+    """
+    One-step vendor registration.
+    Creates a CustomUser (role='admin') + Tenant (is_active=False) atomically.
+    The store stays inactive until a platform admin approves it.
+    """
+    username          = serializers.CharField(max_length=150)
+    email             = serializers.EmailField()
+    password          = serializers.CharField(write_only=True, min_length=8)
+    store_name        = serializers.CharField(max_length=255)
+    store_slug        = serializers.SlugField(max_length=100)
+    store_description = serializers.CharField(required=False, allow_blank=True, default='')
+
+    def validate_username(self, value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError('This username is already taken.')
+        return value
+
+    def validate_email(self, value):
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError('An account with this email already exists.')
+        return value
+
+    def validate_store_slug(self, value):
+        from tenants.models import Tenant
+        if Tenant.objects.filter(slug=value).exists():
+            raise serializers.ValidationError('A store with this slug already exists. Choose a different one.')
+        return value
+
+    def validate_store_name(self, value):
+        from tenants.models import Tenant
+        if Tenant.objects.filter(name=value).exists():
+            raise serializers.ValidationError('A store with this name already exists.')
+        return value
+
+    def create(self, validated_data):
+        from django.db import transaction
+        from tenants.models import Tenant
+
+        with transaction.atomic():
+            user = User.objects.create_user(
+                username=validated_data['username'],
+                email=validated_data['email'],
+                password=validated_data['password'],
+                role='admin',
+            )
+            user.is_email_verified = True
+            user.save()
+            Profile.objects.create(user=user)
+
+            tenant = Tenant.objects.create(
+                name=validated_data['store_name'],
+                slug=validated_data['store_slug'],
+                description=validated_data.get('store_description', ''),
+                owner=user,
+                is_active=False,
+            )
+
+        return user, tenant
+
+
 class VendorLoginSerializer(serializers.Serializer):
     """
     Login for store owners (vendor admins).
@@ -284,6 +345,14 @@ class VendorLoginSerializer(serializers.Serializer):
         except Exception:
             raise serializers.ValidationError({
                 'username': 'No store found for this account. Contact the platform admin.'
+            })
+
+        if not tenant.is_active:
+            raise serializers.ValidationError({
+                'username': (
+                    'Your store registration is pending approval by the platform admin. '
+                    'You will be able to log in once your store is activated.'
+                )
             })
 
         refresh = RefreshToken.for_user(user)

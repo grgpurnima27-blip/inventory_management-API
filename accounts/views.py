@@ -14,6 +14,7 @@ from .serializers import (
     RegisterSerializer,
     LoginSerializer,
     AdminLoginSerializer,
+    VendorRegisterSerializer,
     VendorLoginSerializer,
     EmployeeLoginSerializer,
     ChangePasswordSerializer,
@@ -28,6 +29,50 @@ from .tokens import generate_token, verify_token
 from .emails import send_verification_email, send_password_reset_email
 
 User = get_user_model()
+
+
+@extend_schema(
+    tags=['auth'],
+    summary='Vendor / Store Owner Registration',
+    description=(
+        'Register as a new vendor. Creates your personal account and store in one step. '
+        'Your store will be **inactive** until a platform admin approves it. '
+        'Once approved, use POST /api/auth/vendor/login/ to get your access token.'
+    ),
+    request=VendorRegisterSerializer,
+    responses={
+        201: OpenApiResponse(description='Registration submitted. Pending admin approval.'),
+        400: OpenApiResponse(description='Validation error — duplicate username, email, or slug.'),
+    },
+)
+class VendorRegisterView(APIView):
+    permission_classes = [AllowAny]
+    serializer_class = VendorRegisterSerializer
+
+    def post(self, request):
+        serializer = VendorRegisterSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user, tenant = serializer.save()
+        return Response(
+            {
+                'message': 'Registration submitted successfully. Your store is pending approval.',
+                'user': {
+                    'id':       user.id,
+                    'username': user.username,
+                    'email':    user.email,
+                },
+                'store': {
+                    'name':   tenant.name,
+                    'slug':   tenant.slug,
+                    'status': 'pending_approval',
+                },
+                'next_step': (
+                    'A platform admin will review and activate your store. '
+                    'Then use POST /api/auth/vendor/login/ to get started.'
+                ),
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 @extend_schema(tags=['auth'], request=RegisterSerializer)

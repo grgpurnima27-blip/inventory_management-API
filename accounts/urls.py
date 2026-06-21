@@ -4,6 +4,7 @@ from .views import (
     RegisterView,
     LoginView,
     AdminLoginView,
+    VendorRegisterView,
     VendorLoginView,
     EmployeeLoginView,
     MeView,
@@ -19,11 +20,12 @@ from .jwt_views import CustomTokenRefreshView
 urlpatterns = [
 
     # Authentication
-    path('register/',                         RegisterView.as_view(),     name='register'),
-    path('login/',                            LoginView.as_view(),        name='login'),
-    path('admin/login/',                      AdminLoginView.as_view(),   name='admin-login'),
-    path('vendor/login/',                     VendorLoginView.as_view(),  name='vendor-login'),
-    path('employee/login/',                   EmployeeLoginView.as_view(),name='employee-login'),
+    path('register/',                         RegisterView.as_view(),       name='register'),
+    path('login/',                            LoginView.as_view(),          name='login'),
+    path('admin/login/',                      AdminLoginView.as_view(),     name='admin-login'),
+    path('vendor/register/',                  VendorRegisterView.as_view(), name='vendor-register'),
+    path('vendor/login/',                     VendorLoginView.as_view(),    name='vendor-login'),
+    path('employee/login/',                   EmployeeLoginView.as_view(),  name='employee-login'),
     path('me/',                               MeView.as_view(),           name='me'),
     path('token/refresh/',                  CustomTokenRefreshView.as_view(),   name='token-refresh'),
     

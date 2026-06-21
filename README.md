@@ -204,8 +204,9 @@ Use the right login endpoint for your user type:
 
 | User type | Endpoint | Body |
 |---|---|---|
+| New vendor | `POST /api/auth/vendor/register/` | `username`, `password`, `email`, `store_name`, `store_slug` |
 | Customer | `POST /api/auth/login/` | `username`, `password` |
-| Store owner | `POST /api/auth/vendor/login/` | `username`, `password` |
+| Store owner | `POST /api/auth/vendor/login/` | `username`, `password` (only works after admin approval) |
 | Employee | `POST /api/auth/employee/login/` | `username`, `password`, `tenant_slug` |
 | Platform admin | `POST /api/auth/admin/login/` | `username`, `password` |
 
@@ -248,7 +249,8 @@ All store endpoints (`/api/products/`, `/api/orders/`, etc.) automatically scope
 |---|---|---|---|
 | POST | `/register/` | Public | Register a new customer account |
 | POST | `/login/` | Public | Customer login — returns JWT |
-| POST | `/vendor/login/` | Public | Store owner login — returns JWT + tenant info |
+| POST | `/vendor/register/` | Public | Vendor self-registration — creates account + store (pending approval) |
+| POST | `/vendor/login/` | Public | Store owner login — returns JWT + tenant info (only works after approval) |
 | POST | `/employee/login/` | Public | Employee login — requires `tenant_slug` in body |
 | POST | `/admin/login/` | Public | Platform admin login |
 | POST | `/token/refresh/` | Public | Refresh an expired access token |
@@ -290,12 +292,30 @@ Platform admin only (except `/me/`).
 
 | Method | Endpoint | Access | Description |
 |---|---|---|---|
-| GET | `/` | Platform admin | List all vendor stores |
-| POST | `/` | Platform admin | Register a new vendor store |
+| GET | `/` | Platform admin | List all stores — use `?is_active=false` for pending |
+| POST | `/` | Platform admin | Manually create a vendor store |
 | GET | `/{id}/` | Platform admin | Get store details |
 | PUT/PATCH | `/{id}/` | Platform admin | Update store info |
 | DELETE | `/{id}/` | Platform admin | Delete a store |
+| POST | `/{id}/approve/` | Platform admin | Approve a pending vendor registration |
+| POST | `/{id}/reject/` | Platform admin | Reject and delete a pending registration |
 | GET | `/me/` | Auth | Get the store owned by the logged-in vendor |
+
+**Vendor approval workflow:**
+
+```
+1. Vendor submits:  POST /api/auth/vendor/register/
+                    → store created with is_active=false
+
+2. Admin reviews:   GET /api/tenants/?is_active=false
+                    → lists all pending stores with owner info
+
+3a. Approve:        POST /api/tenants/{id}/approve/
+                    → store goes live, vendor can now login
+
+3b. Reject:         POST /api/tenants/{id}/reject/
+                    → store deleted, vendor account kept (can re-apply)
+```
 
 **Create Store**
 ```http
