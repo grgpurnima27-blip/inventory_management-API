@@ -82,12 +82,12 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()  # applies TenantViewMixin tenant filter
         user = self.request.user
-        if user.role == 'admin':
+        if getattr(user, 'role', None) == 'admin':
             return qs
         return qs.filter(user=user)
 
     def get_serializer_class(self):
-        if self.request.user.role == 'admin':
+        if getattr(self.request.user, 'role', None) == 'admin':
             return OrderAdminSerializer
         return OrderCustomerSerializer
 
@@ -147,6 +147,14 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         data = request.data
         tenant = getattr(request, 'tenant', None)
+        if not tenant:
+            return Response(
+                {'error': 'Tenant could not be identified. Send the X-Tenant-Slug header.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Unwrap SimpleLazyObject → actual Tenant instance required for FK assignment
+        if hasattr(tenant, '_wrapped'):
+            tenant = tenant._wrapped
 
         if not data.get('customer_name'):
             return Response(
