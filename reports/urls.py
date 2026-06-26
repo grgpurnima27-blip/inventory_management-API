@@ -6,6 +6,7 @@ from .views import (
     TopCustomersReportAPIView,
     SalesChartReportAPIView,
     CouponUsageReportAPIView,
+	VendorDashboardReportAPIView,
 )
 
 urlpatterns = [
@@ -39,4 +40,9 @@ urlpatterns = [
         CouponUsageReportAPIView.as_view(),
         name='coupon-usage'
     ),
+	path(
+    'vendor-dashboard/',
+    VendorDashboardReportAPIView.as_view(),
+    name='vendor-dashboard'
+),
 ]

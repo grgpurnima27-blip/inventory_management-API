@@ -7,7 +7,7 @@ from drf_spectacular.utils import extend_schema, OpenApiExample, OpenApiResponse
 from tenants.mixins import TenantViewMixin
 from .models import Review
 from .serializers import ReviewReadSerializer, ReviewWriteSerializer
-
+from rest_framework.permissions import IsAuthenticated
 
 @extend_schema(tags=['reviews'])
 class ReviewViewSet(TenantViewMixin, viewsets.ModelViewSet):
@@ -94,3 +94,7 @@ class ReviewViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         return super().destroy(request, *args, **kwargs)
+    
+
+
+
