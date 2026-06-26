@@ -161,6 +161,7 @@ INSTALLED_APPS = [
     "coupons",
     "wishlist",
     "notifications",
+    "cart"
 ]
 
 # MIDDLEWARE list of middleware components (process requests/responses in order)

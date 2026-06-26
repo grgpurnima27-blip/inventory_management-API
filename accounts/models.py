@@ -8,6 +8,7 @@ class CustomUser(AbstractUser):
     ROLE_CHOICES = (
         ('admin', 'Admin'),
         ('customer', 'Customer'),
+        ('vendor', 'Vendor'),
     )
     username = models.CharField(
         max_length=150,

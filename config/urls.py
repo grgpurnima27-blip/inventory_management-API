@@ -56,6 +56,9 @@ urlpatterns = [
     # Main API
     path('api/', include(router.urls)),
 
+    # Cart
+    path('api/cart/', include('cart.urls')),
+
     # Authentication
     path('api/auth/', include('accounts.urls')),
 
