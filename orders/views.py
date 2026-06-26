@@ -332,6 +332,16 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             inv.quantity -= item_data['quantity']
             inv.save()
 
+            if product.quantity < quantity:
+             return Response(
+                {'error': f'Insufficient stock for {product.name}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            product = item_data['product']
+            product.quantity -= item_data['quantity']
+            product.save()
+
         serializer    = OrderCustomerSerializer(order)
         response_data = dict(serializer.data)
 
