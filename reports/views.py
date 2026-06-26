@@ -16,6 +16,8 @@ from inventory.models import Inventory
 from orders.models import Order, OrderItem
 from products.models import Product
 from accounts.models import CustomUser
+from tenants.mixins import TenantViewMixin
+from rest_framework.permissions import IsAuthenticated
 
 
 # Added here a  serializer for InventorySummaryAPIView
@@ -356,5 +358,104 @@ class CouponUsageReportAPIView(APIView):
                     'expires_at': c['expires_at'],
                 }
                 for c in coupons
+            ]
+        })
+    
+class VendorDashboardReportAPIView(TenantViewMixin, APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary='Vendor Dashboard Report',
+        description='Dashboard stats for the logged-in vendor tenant.',
+        tags=['reports']
+    )
+    def get(self, request):
+        tenant = self.get_tenant()
+
+        total_products = Product.objects.filter(
+            tenant=tenant
+        ).count()
+
+        total_inventory = Inventory.objects.filter(
+            tenant=tenant
+        ).aggregate(
+            total=Sum('quantity')
+        )['total'] or 0
+
+        low_stock_products = Inventory.objects.filter(
+            tenant=tenant,
+            quantity__lt=5,
+            quantity__gt=0
+        ).count()
+
+        out_of_stock_products = Inventory.objects.filter(
+            tenant=tenant,
+            quantity=0
+        ).count()
+
+        total_orders = Order.objects.filter(
+            tenant=tenant
+        ).count()
+
+        pending_orders = Order.objects.filter(
+            tenant=tenant,
+            status=Order.STATUS_PENDING
+        ).count()
+
+        completed_orders = Order.objects.filter(
+            tenant=tenant,
+            status=Order.STATUS_COMPLETED
+        ).count()
+
+        cancelled_orders = Order.objects.filter(
+            tenant=tenant,
+            status=Order.STATUS_CANCELLED
+        ).count()
+
+        revenue = Order.objects.filter(
+            tenant=tenant,
+            status=Order.STATUS_COMPLETED
+        ).aggregate(
+            total=Sum('total_price')
+        )['total'] or 0
+
+        recent_orders = Order.objects.filter(
+            tenant=tenant
+        ).order_by('-created_at')[:5]
+
+        return Response({
+            'tenant': {
+                'id': tenant.id,
+                'name': tenant.name,
+                'slug': tenant.slug,
+            },
+            'products': {
+                'total_products': total_products,
+            },
+            'inventory': {
+                'total_inventory': total_inventory,
+                'low_stock_products': low_stock_products,
+                'out_of_stock_products': out_of_stock_products,
+            },
+            'orders': {
+                'total_orders': total_orders,
+                'pending_orders': pending_orders,
+                'completed_orders': completed_orders,
+                'cancelled_orders': cancelled_orders,
+            },
+            'revenue': {
+                'completed_order_revenue': str(revenue),
+            },
+            'recent_orders': [
+                {
+                    'id': order.id,
+                    'customer_name': order.customer_name,
+                    'delivery_city': order.delivery_city,
+                    'status': order.status,
+                    'payment_status': order.payment_status,
+                    'total_price': str(order.total_price),
+                    'created_at': order.created_at,
+                }
+                for order in recent_orders
             ]
         })

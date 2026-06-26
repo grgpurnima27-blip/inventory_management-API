@@ -1,4 +1,5 @@
 from decimal import Decimal
+from drf_spectacular.utils import extend_schema, OpenApiParameter
 
 from django.db import transaction
 from django.utils import timezone
@@ -82,12 +83,12 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()  # applies TenantViewMixin tenant filter
         user = self.request.user
-        if user.role == 'admin':
+        if getattr(user, 'role', None) == 'admin':
             return qs
         return qs.filter(user=user)
 
     def get_serializer_class(self):
-        if self.request.user.role == 'admin':
+        if getattr(self.request.user, 'role', None) == 'admin':
             return OrderAdminSerializer
         return OrderCustomerSerializer
 
@@ -143,11 +144,33 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             ),
         ]
     )
+    @extend_schema(
+    parameters=[
+        OpenApiParameter(
+            name="X-Tenant-Slug",
+            type=str,
+            location=OpenApiParameter.HEADER,
+            required=True,
+            description="Vendor tenant slug. Example: glow-beauty-store-123",
+        )
+    ]
+)
+
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        data = request.data
-        tenant = getattr(request, 'tenant', None)
+        print("========== DEBUG ==========")
+        print("request.tenant =", getattr(request, "tenant", None))
+        print("request.user =", request.user)
+        print("user id =", request.user.id)
+        print("role =", getattr(request.user, "role", None))
+        print("===========================")
 
+        # data = request.data
+        # tenant = getattr(request, 'tenant', None)
+        # data = request.data
+        # tenant = request.user.profile.tenant
+        data = request.data
+        tenant = self.get_tenant()
         if not data.get('customer_name'):
             return Response(
                 {'error': 'customer_name is required.'},
@@ -217,24 +240,35 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 )
 
             try:
-                product_qs = Product.objects.filter(id=int(product_id))
-                if tenant:
-                    product_qs = product_qs.filter(tenant=tenant)
-                product = product_qs.get()
+                # product_qs= Product.objects.filter(id=int(product_id))
+                # if tenant:
+                # product_qs = product_qs.filter(tenant=tenant)
+                # product = product_qs.get()
+                product = Product.objects.get(
+                    id=int(product_id),
+                    tenant=tenant
+                )
             except Product.DoesNotExist:
                 return Response(
                     {'error': f'Product with id {product_id} does not exist.'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            inventory_qs = Inventory.objects.select_for_update().filter(
+            # inventory_qs = Inventory.objects.select_for_update().filter(
+            #     product=product,
+            #     warehouse__city__iexact=delivery_city,
+            #     quantity__gte=quantity
+            # )
+            # if tenant:
+            #     inventory_qs = inventory_qs.filter(tenant=tenant)
+            # inventory = inventory_qs.first()
+            inventory = Inventory.objects.select_for_update().filter(
+                tenant=tenant,
                 product=product,
+                warehouse__tenant=tenant,
                 warehouse__city__iexact=delivery_city,
                 quantity__gte=quantity
-            )
-            if tenant:
-                inventory_qs = inventory_qs.filter(tenant=tenant)
-            inventory = inventory_qs.first()
+            ).first()
 
             if not inventory:
                 return Response(
@@ -678,3 +712,84 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             },
             status=status.HTTP_200_OK
         )
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import action
+from tenants.mixins import TenantViewMixin
+
+
+class VendorOrderViewSet(TenantViewMixin, viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = OrderAdminSerializer
+
+    queryset = Order.objects.select_related(
+        "tenant",
+        "user"
+    ).prefetch_related(
+        "items",
+        "items__product",
+        "items__warehouse"
+    )
+
+    def get_queryset(self):
+        tenant = self.get_tenant()
+        return self.queryset.filter(tenant=tenant).order_by("-created_at")
+
+    @action(detail=True, methods=["post"])
+    def process(self, request, pk=None):
+        order = self.get_object()
+
+        if order.status != Order.STATUS_PENDING:
+            return Response(
+                {"error": "Only pending orders can be moved to processing."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        order.status = Order.STATUS_PROCESSING
+        order.processed_at = timezone.now()
+        order.save()
+
+        return Response({
+            "message": "Order moved to processing.",
+            "order_id": order.id,
+            "status": order.status
+        })
+
+    @action(detail=True, methods=["post"])
+    def ship(self, request, pk=None):
+        order = self.get_object()
+
+        if order.status != Order.STATUS_PROCESSING:
+            return Response(
+                {"error": "Only processing orders can be shipped."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        order.status = Order.STATUS_SHIPPED
+        order.shipped_at = timezone.now()
+        order.save()
+
+        return Response({
+            "message": "Order shipped.",
+            "order_id": order.id,
+            "status": order.status
+        })
+
+    @action(detail=True, methods=["post"])
+    def complete(self, request, pk=None):
+        order = self.get_object()
+
+        if order.status != Order.STATUS_SHIPPED:
+            return Response(
+                {"error": "Only shipped orders can be completed."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        order.status = Order.STATUS_COMPLETED
+        order.completed_at = timezone.now()
+        order.save()
+
+        return Response({
+            "message": "Order completed.",
+            "order_id": order.id,
+            "status": order.status
+        })

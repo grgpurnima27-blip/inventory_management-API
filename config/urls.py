@@ -29,7 +29,7 @@ from accounts.jwt_views import CustomTokenRefreshView
 from products.views import ProductViewSet
 from warehouses.views import WarehouseViewSet
 from inventory.views import InventoryViewSet
-from orders.views import OrderViewSet
+from orders.views import OrderViewSet,VendorOrderViewSet
 from wishlist.views import WishlistViewSet
 
 from django.conf import settings
@@ -42,6 +42,7 @@ router.register('products', ProductViewSet, basename='products')
 router.register('warehouses', WarehouseViewSet, basename='warehouses')
 router.register('inventory', InventoryViewSet, basename='inventory')
 router.register('orders', OrderViewSet, basename='orders')
+router.register('vendor/orders', VendorOrderViewSet, basename='vendor-orders')
 router.register('wishlist', WishlistViewSet, basename='wishlist')
 
 

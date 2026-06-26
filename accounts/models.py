@@ -1,6 +1,17 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from cloudinary.models import CloudinaryField
+# accounts/models.py
+from tenants.models import Tenant
+
+# class Profile(models.Model):
+#     ...
+#     tenant = models.ForeignKey(
+#         Tenant,
+#         on_delete=models.CASCADE,
+#         null=True,
+#         blank=True
+#     )
 
 
 class CustomUser(AbstractUser):
@@ -38,6 +49,11 @@ class CustomUser(AbstractUser):
 
 
 class Profile(models.Model):
+    tenant = models.ForeignKey(
+        Tenant,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True)
 
     user = models.OneToOneField(
         CustomUser,
@@ -60,6 +76,13 @@ class Profile(models.Model):
     )
 
     phone = models.CharField(max_length=20, null=True, blank=True)
+
+    tenant = models.ForeignKey(
+    Tenant,
+    on_delete=models.CASCADE,
+    null=True,
+    blank=True
+)
     address = models.TextField(null=True, blank=True)
     city = models.CharField(max_length=100, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -16,7 +16,24 @@ class Tenant(models.Model):
         on_delete=models.CASCADE,
         related_name='owned_tenant',
     )
-    is_active   = models.BooleanField(default=True)
+    # is_active   = models.BooleanField(default=True)
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_SUSPENDED = "suspended"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_APPROVED, "Approved"),
+        (STATUS_SUSPENDED, "Suspended"),
+    ]
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING
+    )
+
+    is_active = models.BooleanField(default=True)
     created_at  = models.DateTimeField(auto_now_add=True)
     updated_at  = models.DateTimeField(auto_now=True)
 

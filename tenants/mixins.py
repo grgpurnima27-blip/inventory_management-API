@@ -11,17 +11,44 @@ class TenantViewMixin:
     - get_tenant()      → raises 403 if no tenant can be identified
     """
 
+    # def get_tenant(self):
+    #     tenant = getattr(self.request, 'tenant', None)
+    #     # `not tenant` forces the SimpleLazyObject to evaluate its wrapped
+    #     # value — `is None` alone won't work because request.tenant is always
+    #     # a SimpleLazyObject, never None itself.
+    #     if not tenant:
+    #         raise PermissionDenied(
+    #             'Tenant could not be identified. '
+    #             'Send the X-Tenant-Slug header or log in as a vendor.'
+    #         )
+    #     return tenant
     def get_tenant(self):
         tenant = getattr(self.request, 'tenant', None)
-        # `not tenant` forces the SimpleLazyObject to evaluate its wrapped
-        # value — `is None` alone won't work because request.tenant is always
-        # a SimpleLazyObject, never None itself.
-        if not tenant:
-            raise PermissionDenied(
-                'Tenant could not be identified. '
-                'Send the X-Tenant-Slug header or log in as a vendor.'
-            )
-        return tenant
+
+        if tenant:
+            return tenant
+
+        slug = (
+            self.request.headers.get("X-Tenant-Slug")
+            or self.request.query_params.get("tenant")
+        )
+
+        if slug:
+            from tenants.models import Tenant
+
+            tenant = Tenant.objects.filter(
+                slug=slug,
+                is_active=True,
+                status=Tenant.STATUS_APPROVED
+            ).first()
+
+            if tenant:
+                return tenant
+
+        raise PermissionDenied(
+            'Tenant could not be identified. '
+            'Send the X-Tenant-Slug header or log in as a vendor.'
+        )
 
     def get_queryset(self):
         qs = super().get_queryset()

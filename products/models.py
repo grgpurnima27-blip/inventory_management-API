@@ -40,7 +40,7 @@ class Product(models.Model):
         blank=True,
         folder='products/',
     )
-
+    
     created_at = models.DateTimeField(
         auto_now_add=True
     )

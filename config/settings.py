@@ -326,9 +326,11 @@ SPECTACULAR_SETTINGS = {
 }
 
 # Google OAuth Settings
+# GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+# GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
+
 SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = os.getenv('GOOGLE_CLIENT_ID')
 SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
-
 # Add authentication backends
 AUTHENTICATION_BACKENDS = (
     'social_core.backends.google.GoogleOAuth2', # google login 

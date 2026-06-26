@@ -1,53 +1,3 @@
-
-from tenants.models import Tenant
-
-
-def _resolve_tenant(request):
-    slug = (
-        request.headers.get("X-Tenant-Slug")
-        or request.GET.get("tenant")
-    )
-
-    if slug:
-        try:
-            tenant = Tenant.objects.get(slug=slug, is_active=True)
-        except Tenant.DoesNotExist:
-            return None
-
-        # 🔐 SECURITY: user must belong to tenant
-        if request.user.is_authenticated:
-            user_tenant = getattr(request.user, "tenant", None)
-            if user_tenant and user_tenant != tenant:
-                return None
-
-        return tenant
-
-    # fallback for logged-in user
-    if request.user.is_authenticated:
-        return getattr(request.user, "tenant", None)
-
-    return None
-
-
-class TenantMiddleware:
-    """
-    Sets request.tenant on every incoming request.
-
-    Views can then do:
-        tenant = request.tenant        # may be None for platform admins
-    """
-    def __init__(self, get_response):
-        self.get_response = get_response
-
-    def __call__(self, request):
-        request.tenant = _resolve_tenant(request)
-        return self.get_response(request)
-
-
-
-
-
-
 # from django.utils.functional import SimpleLazyObject
 
 
@@ -105,4 +55,124 @@ class TenantMiddleware:
 #         return self.get_response(request)
 
 
+# from django.utils.functional import SimpleLazyObject
 
+
+# def _resolve_tenant(request):
+#     try:
+#         from tenants.models import Tenant, TenantMember
+
+#         slug = request.headers.get("X-Tenant-Slug") or request.GET.get("tenant")
+
+#         # 1. Resolve tenant from header or query param
+#         if slug:
+#             tenant = Tenant.objects.filter(
+#                 slug=slug,
+#                 is_active=True,
+#                 status=Tenant.STATUS_APPROVED
+#             ).first()
+
+#             if not tenant:
+#                 return None
+
+#             return tenant
+
+#         # 2. Resolve tenant from logged-in vendor owner or member
+#         if request.user.is_authenticated:
+#             owned = getattr(request.user, "owned_tenant", None)
+
+#             if (
+#                 owned
+#                 and owned.is_active
+#                 and owned.status == Tenant.STATUS_APPROVED
+#             ):
+#                 return owned
+
+#             membership = TenantMember.objects.filter(
+#                 user=request.user,
+#                 is_active=True,
+#                 tenant__is_active=True,
+#                 tenant__status=Tenant.STATUS_APPROVED
+#             ).select_related("tenant").first()
+
+#             if membership:
+#                 return membership.tenant
+
+#         return None
+
+#     except Exception:
+#         return None
+
+
+# class TenantMiddleware:
+#     def __init__(self, get_response):
+#         self.get_response = get_response
+
+#     def __call__(self, request):
+#         print("HEADERS:", dict(request.headers))
+#         print("X-Tenant-Slug:", request.headers.get("X-Tenant-Slug"))
+
+#         request.tenant = SimpleLazyObject(lambda: _resolve_tenant(request))
+#         return self.get_response(request)
+
+
+from django.utils.functional import SimpleLazyObject
+
+
+def _resolve_tenant(request):
+    from tenants.models import Tenant, TenantMember
+
+    slug = request.headers.get("X-Tenant-Slug") or request.GET.get("tenant")
+
+    print("RESOLVING TENANT")
+    print("slug =", slug)
+
+    if slug:
+        tenant = Tenant.objects.filter(
+            slug=slug,
+            is_active=True,
+            status=Tenant.STATUS_APPROVED
+        ).first()
+
+        print("tenant found =", tenant)
+
+        return tenant
+
+    if request.user.is_authenticated:
+        owned = getattr(request.user, "owned_tenant", None)
+
+        print("owned =", owned)
+
+        if (
+            owned
+            and owned.is_active
+            and owned.status == Tenant.STATUS_APPROVED
+        ):
+            return owned
+
+        membership = TenantMember.objects.filter(
+            user=request.user,
+            is_active=True,
+            tenant__is_active=True,
+            tenant__status=Tenant.STATUS_APPROVED
+        ).select_related("tenant").first()
+
+        print("membership =", membership)
+
+        if membership:
+            return membership.tenant
+
+    return None
+
+
+class TenantMiddleware:
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        print("HEADERS:", dict(request.headers))
+        print("X-Tenant-Slug:", request.headers.get("X-Tenant-Slug"))
+        print("QUERY tenant:", request.GET.get("tenant"))
+
+        request.tenant = SimpleLazyObject(lambda: _resolve_tenant(request))
+        return self.get_response(request)
