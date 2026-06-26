@@ -8,6 +8,7 @@ from datetime import timedelta # used for JWT token expiration times
 from django.core.exceptions import ImproperlyConfigured # imports expection that rises when django settings are misconfigured or missing required values 
 
 from dotenv import load_dotenv # used to load environment variables from .env file into os.environ
+from corsheaders.defaults import default_headers
 import dj_database_url 
 import cloudinary
 
@@ -30,6 +31,7 @@ DEBUG = os.getenv("DEBUG", "False") == "True"
 
 ALLOWED_HOSTS = [
     "127.0.0.1", # local computer IP
+    
     "localhost", # local computer name 
     ".railway.app", # Any subdomain of railway.app
     ".up.railway.app",  ### Add Railway default domain
@@ -92,6 +94,7 @@ CORS_ALLOW_HEADERS = [
     'user-agent',
     'x-csrftoken',
     'x-requested-with',
+    "x-tenant-slug"
 ]
 
 # CLOUDINARY
