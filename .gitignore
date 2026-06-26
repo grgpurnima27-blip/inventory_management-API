@@ -101,3 +101,6 @@ env/
 env/
 __pycache__/
 *.pyc
+
+# Learning notes — local only, not for version control
+docs/

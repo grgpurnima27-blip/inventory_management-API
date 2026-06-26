@@ -83,12 +83,12 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset()  # applies TenantViewMixin tenant filter
         user = self.request.user
-        if user.role == 'admin':
+        if getattr(user, 'role', None) == 'admin':
             return qs
         return qs.filter(user=user)
 
     def get_serializer_class(self):
-        if self.request.user.role == 'admin':
+        if getattr(self.request.user, 'role', None) == 'admin':
             return OrderAdminSerializer
         return OrderCustomerSerializer
 
