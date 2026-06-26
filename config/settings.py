@@ -365,3 +365,4 @@ ESEWA_SETTINGS = {
     "SUCCESS_URL": "https://yourdomain.com/api/orders/esewa-verify/",
     "FAILURE_URL": "https://yourdomain.com/payment-failed",
 }
+
