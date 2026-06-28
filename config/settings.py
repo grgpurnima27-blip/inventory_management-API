@@ -167,7 +167,8 @@ INSTALLED_APPS = [
     "coupons",
     "wishlist",
     "notifications",
-    "cart"
+    "cart",
+    "payment",
 ]
 
 # MIDDLEWARE list of middleware components (process requests/responses in order)
@@ -366,3 +367,10 @@ ESEWA_SETTINGS = {
     "FAILURE_URL": "https://yourdomain.com/payment-failed",
 }
 
+
+KHALTI_SECRET_KEY = os.getenv("KHALTI_SECRET_KEY")
+KHALTI_PUBLIC_KEY = os.getenv("KHALTI_PUBLIC_KEY")
+
+WEBSITE_URL = "http://127.0.0.1:8000"
+
+PAYMENT_RETURN_URL = "http://127.0.0.1:8000/api/payments/verify/"

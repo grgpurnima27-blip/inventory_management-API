@@ -79,6 +79,9 @@ urlpatterns = [
     # Coupons
     path('api/', include('coupons.urls')),
 
+    #payment
+    path("api/payments/", include("payment.urls")),
+
     # OpenAPI Schema
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
 
