@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Inventory
+from .models import Inventory,InventoryTransaction
 
 
 @admin.register(Inventory)
@@ -42,3 +42,17 @@ class InventoryAdmin(admin.ModelAdmin):
         return 'In Stock'
 
     stock_status.short_description = 'Stock Status'
+
+@admin.register(InventoryTransaction)
+class InventoryTransactionAdmin(admin.ModelAdmin):
+    list_display=[
+        "inventory",
+        "transaction_type",
+        "quantity",
+        "remarks",
+        "created_at",
+    ]
+
+    list_filter=[
+        "transaction_type",
+    ]
