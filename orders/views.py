@@ -144,17 +144,17 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             ),
         ]
     )
-    @extend_schema(
-    parameters=[
-        OpenApiParameter(
-            name="X-Tenant-Slug",
-            type=str,
-            location=OpenApiParameter.HEADER,
-            required=True,
-            description="Vendor tenant slug. Example: glow-beauty-store-123",
-        )
-    ]
-)
+#     @extend_schema(
+#     parameters=[
+#         OpenApiParameter(
+#             name="X-Tenant-Slug",
+#             type=str,
+#             location=OpenApiParameter.HEADER,
+#             required=True,
+#             description="Vendor tenant slug. Example: glow-beauty-store-123",
+#         )
+#     ]
+# )
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -169,8 +169,10 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
         # tenant = getattr(request, 'tenant', None)
         # data = request.data
         # tenant = request.user.profile.tenant
+        # data = request.data
+        # tenant = self.get_tenant()
         data = request.data
-        tenant = self.get_tenant()
+        order_tenant = None
         if not data.get('customer_name'):
             return Response(
                 {'error': 'customer_name is required.'},
@@ -244,10 +246,22 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 # if tenant:
                 # product_qs = product_qs.filter(tenant=tenant)
                 # product = product_qs.get()
+                # product = Product.objects.get(
+                #     id=int(product_id),
+                #     tenant=tenant
+                # )
                 product = Product.objects.get(
                     id=int(product_id),
-                    tenant=tenant
+                    tenant__is_active=True
                 )
+
+                if order_tenant is None:
+                    order_tenant = product.tenant
+                elif product.tenant_id != order_tenant.id:
+                    return Response(
+                        {'error': 'All products in one order must belong to the same vendor.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
             except Product.DoesNotExist:
                 return Response(
                     {'error': f'Product with id {product_id} does not exist.'},
@@ -262,10 +276,17 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             # if tenant:
             #     inventory_qs = inventory_qs.filter(tenant=tenant)
             # inventory = inventory_qs.first()
+            # inventory = Inventory.objects.select_for_update().filter(
+            #     tenant=tenant,
+            #     product=product,
+            #     warehouse__tenant=tenant,
+            #     warehouse__city__iexact=delivery_city,
+            #     quantity__gte=quantity
+            # ).first()
             inventory = Inventory.objects.select_for_update().filter(
-                tenant=tenant,
+                tenant=order_tenant,
                 product=product,
-                warehouse__tenant=tenant,
+                warehouse__tenant=order_tenant,
                 warehouse__city__iexact=delivery_city,
                 quantity__gte=quantity
             ).first()
@@ -296,9 +317,18 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
         discount_amount = Decimal('0.00')
         total_price     = original_amount.quantize(Decimal('0.01'))
 
+        # try:
+        #     order = Order.objects.create(
+        #         tenant          = tenant,
+        if order_tenant is None:
+            return Response(
+            {'error': 'Tenant could not be identified from selected product.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
         try:
-            order = Order.objects.create(
-                tenant          = tenant,
+               order = Order.objects.create(
+               tenant          = order_tenant,
                 user            = request.user,
                 customer_name   = data.get('customer_name'),
                 delivery_city   = delivery_city,
