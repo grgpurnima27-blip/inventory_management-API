@@ -152,78 +152,56 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
 #             location=OpenApiParameter.HEADER,
 #             required=True,
 #             description="Vendor tenant slug. Example: glow-beauty-store-123",
-#         )
-#     ]
-# )
-
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        print("========== DEBUG ==========")
-        print("request.tenant =", getattr(request, "tenant", None))
-        print("request.user =", request.user)
-        print("user id =", request.user.id)
-        print("role =", getattr(request.user, "role", None))
-        print("===========================")
-
-        # data = request.data
-        # tenant = getattr(request, 'tenant', None)
-        # data = request.data
-        # tenant = request.user.profile.tenant
-        # data = request.data
-        # tenant = self.get_tenant()
         data = request.data
-        order_tenant = None
-        if not data.get('customer_name'):
+
+        if not data.get("customer_name"):
             return Response(
-                {'error': 'customer_name is required.'},
+                {"error": "customer_name is required."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        items_data = data.get('items') or data.get('create_items', [])
+        items_data = data.get("items") or data.get("create_items", [])
         if not items_data:
             return Response(
-                {'error': 'At least one item is required.'},
+                {"error": "At least one item is required."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # added Khalti to valid payment methods
-        payment_method = data.get(
-            'payment_method',
-            Order.PAYMENT_METHOD_COD
-        )
+        payment_method = data.get("payment_method", Order.PAYMENT_METHOD_COD)
         if payment_method not in [
             Order.PAYMENT_METHOD_ESEWA,
-            Order.PAYMENT_METHOD_KHALTI,  # ← NEW
+            Order.PAYMENT_METHOD_KHALTI,
             Order.PAYMENT_METHOD_COD,
         ]:
             return Response(
-                ##### UPDATED: error message mentions Khalti
-                {'error': 'Invalid payment_method. Must be "esewa", "khalti" or "cod".'},
+                {"error": 'Invalid payment_method. Must be "esewa", "khalti" or "cod".'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        delivery_city = data.get('delivery_city', '').strip()
+        delivery_city = data.get("delivery_city", "").strip()
         if not delivery_city:
             try:
-                delivery_city = request.user.profile.city or ''
+                delivery_city = request.user.profile.city or ""
             except Exception:
-                delivery_city = ''
+                delivery_city = ""
+
         if not delivery_city:
             return Response(
-                {'error': 'No delivery city set. Provide delivery_city in the request or update your city in your profile.'},
+                {"error": "No delivery city set. Provide delivery_city or update your profile city."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        order_items     = []
-        original_amount = Decimal('0.00')
+        vendor_groups = {}
 
         for item in items_data:
-            product_id   = item.get('product')
-            quantity_val = item.get('quantity', 1)
+            product_id = item.get("product")
+            quantity_val = item.get("quantity", 1)
 
             if not product_id:
                 return Response(
-                    {'error': 'Each item must have a product ID.'},
+                    {"error": "Each item must have a product ID."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -231,62 +209,31 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 quantity = int(quantity_val)
             except (ValueError, TypeError):
                 return Response(
-                    {'error': f'Invalid quantity for product ID {product_id}.'},
+                    {"error": f"Invalid quantity for product ID {product_id}."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
             if quantity <= 0:
                 return Response(
-                    {'error': 'Quantity must be greater than 0.'},
+                    {"error": "Quantity must be greater than 0."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
             try:
-                # product_qs= Product.objects.filter(id=int(product_id))
-                # if tenant:
-                # product_qs = product_qs.filter(tenant=tenant)
-                # product = product_qs.get()
-                # product = Product.objects.get(
-                #     id=int(product_id),
-                #     tenant=tenant
-                # )
                 product = Product.objects.get(
                     id=int(product_id),
                     tenant__is_active=True
                 )
-
-                if order_tenant is None:
-                    order_tenant = product.tenant
-                elif product.tenant_id != order_tenant.id:
-                    return Response(
-                        {'error': 'All products in one order must belong to the same vendor.'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
             except Product.DoesNotExist:
                 return Response(
-                    {'error': f'Product with id {product_id} does not exist.'},
+                    {"error": f"Product with id {product_id} does not exist."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # inventory_qs = Inventory.objects.select_for_update().filter(
-            #     product=product,
-            #     warehouse__city__iexact=delivery_city,
-            #     quantity__gte=quantity
-            # )
-            # if tenant:
-            #     inventory_qs = inventory_qs.filter(tenant=tenant)
-            # inventory = inventory_qs.first()
-            # inventory = Inventory.objects.select_for_update().filter(
-            #     tenant=tenant,
-            #     product=product,
-            #     warehouse__tenant=tenant,
-            #     warehouse__city__iexact=delivery_city,
-            #     quantity__gte=quantity
-            # ).first()
             inventory = Inventory.objects.select_for_update().filter(
-                tenant=order_tenant,
+                tenant=product.tenant,
                 product=product,
-                warehouse__tenant=order_tenant,
+                warehouse__tenant=product.tenant,
                 warehouse__city__iexact=delivery_city,
                 quantity__gte=quantity
             ).first()
@@ -294,7 +241,7 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             if not inventory:
                 return Response(
                     {
-                        'error': (
+                        "error": (
                             f'"{product.name}" is not available in '
                             f'{delivery_city} with the requested quantity.'
                         )
@@ -302,138 +249,90 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            unit_price       = Decimal(str(product.price))
-            original_amount += unit_price * quantity
-
-            order_items.append({
-                'product':    product,
-                'warehouse':  inventory.warehouse,
-                'inventory':  inventory,
-                'quantity':   quantity,
-                'unit_price': unit_price,
-            })
-
-        original_amount = original_amount.quantize(Decimal('0.01'))
-        discount_amount = Decimal('0.00')
-        total_price     = original_amount.quantize(Decimal('0.01'))
-
-        # try:
-        #     order = Order.objects.create(
-        #         tenant          = tenant,
-        if order_tenant is None:
-            return Response(
-            {'error': 'Tenant could not be identified from selected product.'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-        try:
-               order = Order.objects.create(
-               tenant          = order_tenant,
-                user            = request.user,
-                customer_name   = data.get('customer_name'),
-                delivery_city   = delivery_city,
-                payment_method  = payment_method,
-                original_amount = original_amount,
-                discount_amount = discount_amount,
-                total_price     = total_price,
-                status          = Order.STATUS_PENDING,
-                payment_status  = Order.PAYMENT_STATUS_PENDING,
-            )
-        except ValidationError as e:
-            error_msg = (
-                e.message_dict
-                if hasattr(e, 'message_dict')
-                else str(e)
-            )
-            return Response(
-                {'error': error_msg},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        for item_data in order_items:
-            OrderItem.objects.create(
-                order      = order,
-                product    = item_data['product'],
-                warehouse  = item_data['warehouse'],
-                quantity   = item_data['quantity'],
-                unit_price = item_data['unit_price'],
-            )
-            inv           = item_data['inventory']
-            inv.quantity -= item_data['quantity']
-            inv.save()
-
             if product.quantity < quantity:
-             return Response(
-                {'error': f'Insufficient stock for {product.name}'},
+                return Response(
+                    {"error": f"Insufficient stock for {product.name}."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            product = item_data['product']
-            product.quantity -= item_data['quantity']
-            product.save()
+            tenant_id = product.tenant_id
+            unit_price = Decimal(str(product.price))
 
-        serializer    = OrderCustomerSerializer(order)
-        response_data = dict(serializer.data)
+            if tenant_id not in vendor_groups:
+                vendor_groups[tenant_id] = {
+                    "tenant": product.tenant,
+                    "items": [],
+                    "original_amount": Decimal("0.00"),
+                }
 
-        #  added Khalti payment instructions
-        if payment_method == Order.PAYMENT_METHOD_ESEWA:
-            response_data['payment_instructions'] = (
-                f'Total: NPR {total_price}. '
-                f'Pay via eSewa app. '
-                f'Then call POST /api/orders/{order.id}/confirm-payment/ '
-                f'with your eSewa transaction ID.'
-            )
-        elif payment_method == Order.PAYMENT_METHOD_KHALTI:
-            response_data['payment_instructions'] = (
-                f'Total: NPR {total_price}. '
-                f'Pay via Khalti app. '
-                f'Then call POST /api/orders/{order.id}/confirm-payment/ '
-                f'with your Khalti transaction ID.'
-            )
-        else:
-            response_data['payment_instructions'] = (
-                f'Pay NPR {total_price} cash upon delivery.'
+            vendor_groups[tenant_id]["original_amount"] += unit_price * quantity
+            vendor_groups[tenant_id]["items"].append({
+                "product": product,
+                "warehouse": inventory.warehouse,
+                "inventory": inventory,
+                "quantity": quantity,
+                "unit_price": unit_price,
+            })
+
+        if not vendor_groups:
+            return Response(
+                {"error": "No valid order items found."},
+                status=status.HTTP_400_BAD_REQUEST
             )
 
-        headers = self.get_success_headers(serializer.data)
+        created_orders = []
+
+        for group in vendor_groups.values():
+            original_amount = group["original_amount"].quantize(Decimal("0.01"))
+            discount_amount = Decimal("0.00")
+            total_price = original_amount
+
+            try:
+                order = Order.objects.create(
+                    tenant=group["tenant"],
+                    user=request.user,
+                    customer_name=data.get("customer_name"),
+                    delivery_city=delivery_city,
+                    payment_method=payment_method,
+                    original_amount=original_amount,
+                    discount_amount=discount_amount,
+                    total_price=total_price,
+                    status=Order.STATUS_PENDING,
+                    payment_status=Order.PAYMENT_STATUS_PENDING,
+                )
+            except ValidationError as e:
+                error_msg = e.message_dict if hasattr(e, "message_dict") else str(e)
+                return Response(
+                    {"error": error_msg},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            for item_data in group["items"]:
+                product = item_data["product"]
+
+                OrderItem.objects.create(
+                    order=order,
+                    product=product,
+                    warehouse=item_data["warehouse"],
+                    quantity=item_data["quantity"],
+                    unit_price=item_data["unit_price"],
+                )
+
+                inv = item_data["inventory"]
+                inv.quantity -= item_data["quantity"]
+                inv.save()
+
+                product.quantity -= item_data["quantity"]
+                product.save()
+
+            created_orders.append(order)
+
         return Response(
-            response_data,
-            status=status.HTTP_201_CREATED,
-            headers=headers
-        )
-
-    ###### Update Order (Admin) 
-
-    @extend_schema(
-        summary='Update Order (Admin only)',
-        description='Admin can update order status and payment status.',
-        request=AdminUpdateOrderSerializer,
-        responses={
-            200: OrderAdminSerializer,
-            400: OpenApiResponse(description='Invalid transition.'),
-            403: OpenApiResponse(description='Admin only.'),
-        },
-        tags=['Orders'],
-        examples=[
-            OpenApiExample(
-                'Move to Processing',
-                value={'status': 'processing'},
-                request_only=True,
-            ),
-            OpenApiExample(
-                'Mark as Paid',
-                value={'payment_status': 'paid'},
-                request_only=True,
-            ),
-            OpenApiExample(
-                'Update Both',
-                value={
-                    'status':         'shipped',
-                    'payment_status': 'paid'
-                },
-                request_only=True,
-            ),
-        ]
+            {
+                "message": "Orders created successfully.",
+                "orders": OrderCustomerSerializer(created_orders, many=True).data,
+            },
+            status=status.HTTP_201_CREATED
     )
     def update(self, request, *args, **kwargs):
         if request.user.role != 'admin':
