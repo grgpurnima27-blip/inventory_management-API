@@ -10,10 +10,10 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ('products', '0008_merge_20260626_1704'),
-        ('tenants', '0003_tenant_status'),
-        ('warehouses', '0004_warehouse_tenant_alter_warehouse_name_and_more'),
-        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+    ('products', '0008_merge_20260626_1707'),  
+    ('tenants', '0003_tenant_status'),
+    ('warehouses', '0004_warehouse_tenant_alter_warehouse_name_and_more'),
+    migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
