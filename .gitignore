@@ -104,3 +104,6 @@ __pycache__/
 
 # Learning notes — local only, not for version control
 docs/
+
+# Claude Code local settings
+.claude/
