@@ -1,0 +1,16 @@
+[33m8bb809d[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m HEAD@{0}: pull --rebase origin main (finish): returning to refs/heads/main
+[33m8bb809d[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m HEAD@{1}: pull --rebase origin main (start): checkout 8bb809d055a2d184d83ace5c097ccd3f39df7e68
+[33m0bff872[m HEAD@{2}: commit (amend): inventory transactions added
+[33mc1ee73e[m HEAD@{3}: commit: Complete and inventory transaction feature
+[33m2399bd9[m HEAD@{4}: cherry-pick: inventory transaction stock update
+[33m7b8e98d[m HEAD@{5}: reset: moving to origin/main
+[33m7b8e98d[m HEAD@{6}: checkout: moving from main to main
+[33m7b8e98d[m HEAD@{7}: reset: moving to origin/main
+[33m924b856[m HEAD@{8}: reset: moving to HEAD~1
+[33md7c9aca[m HEAD@{9}: commit: inventory transaction stock update
+[33m924b856[m HEAD@{10}: pull origin main: Fast-forward
+[33m01c4cab[m HEAD@{11}: reset: moving to HEAD
+[33m01c4cab[m HEAD@{12}: pull origin main: Fast-forward
+[33m9b3d21a[m HEAD@{13}: reset: moving to HEAD
+[33m9b3d21a[m HEAD@{14}: checkout: moving from main to main
+[33m9b3d21a[m HEAD@{15}: clone: from github.com:grgpurnima27-blip/inventory_management-API.git

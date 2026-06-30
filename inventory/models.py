@@ -1,10 +1,10 @@
-from django.conf import settings
-from django.core.exceptions import ValidationError
 from django.db import models, transaction
+from django.core.exceptions import ValidationError
+from django.conf import settings
 
 from products.models import Product
-from tenants.models import TenantManager
 from warehouses.models import Warehouse
+from tenants.models import TenantManager
 
 
 class Inventory(models.Model):
@@ -69,8 +69,6 @@ class InventoryTransaction(models.Model):
         "tenants.Tenant",
         on_delete=models.CASCADE,
         related_name="inventory_transactions",
-        null=True,
-        blank=True,
     )
 
     inventory = models.ForeignKey(
@@ -106,9 +104,6 @@ class InventoryTransaction(models.Model):
 
     @transaction.atomic
     def save(self, *args, **kwargs):
-        if not self.tenant_id and self.inventory_id:
-            self.tenant = self.inventory.tenant
-
         is_new = self.pk is None
 
         super().save(*args, **kwargs)
@@ -118,17 +113,10 @@ class InventoryTransaction(models.Model):
 
         inventory = self.inventory
 
-        if self.transaction_type in (
-            self.PURCHASE,
-            self.RETURN,
-            self.ADJUSTMENT,
-        ):
+        if self.transaction_type in [self.PURCHASE, self.RETURN, self.ADJUSTMENT]:
             inventory.quantity += self.quantity
 
-        elif self.transaction_type in (
-            self.SALE,
-            self.DAMAGE,
-        ):
+        elif self.transaction_type in [self.SALE, self.DAMAGE]:
             if inventory.quantity < self.quantity:
                 raise ValidationError("Insufficient stock.")
             inventory.quantity -= self.quantity
