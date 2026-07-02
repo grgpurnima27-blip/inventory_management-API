@@ -15,6 +15,7 @@ class ProductReadSerializer(serializers.ModelSerializer):
             'sku',
             'category',
             'price',
+            'quantity',
             'image',  # it willreturn full Cloudinary URL
             'created_at',
             'updated_at',
@@ -43,6 +44,7 @@ class ProductWriteSerializer(serializers.ModelSerializer):
             'category',
             'price',
             'image',
+            'quantity',
         ]
 
     def validate_name(self, value):
