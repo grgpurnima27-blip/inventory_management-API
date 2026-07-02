@@ -1,4 +1,5 @@
 from decimal import Decimal
+from urllib import response
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 
 from django.db import transaction
@@ -6,7 +7,7 @@ from django.utils import timezone
 from django.core.exceptions import ValidationError
 
 from rest_framework import status, viewsets, serializers
-from rest_framework.decorators import action
+from rest_framework.decorators import APIView, APIView, action
 from rest_framework.response import Response
 
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
@@ -16,7 +17,14 @@ from tenants.mixins import TenantViewMixin
 from inventory.models import Inventory
 from products.models import Product
 
-from .models import Order, OrderItem
+from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
+
+from django.http import FileResponse, FileResponse, HttpResponse
+from .services import InvoiceService
+from .pdf_generator import InvoicePDFGenerator
+
+from .models import Invoice, Invoice, Order, OrderItem
 from .serializers import (
     OrderSerializer,
     OrderCustomerSerializer,
@@ -77,8 +85,10 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
     queryset = Order.objects.select_related('user').prefetch_related(
         'items',
         'items__product',
-        'items__warehouse',
+        'items__warehou' \
+        'se',
     )
+
 
     def get_queryset(self):
         qs = super().get_queryset()  # applies TenantViewMixin tenant filter
@@ -687,6 +697,8 @@ class VendorOrderViewSet(TenantViewMixin, viewsets.ReadOnlyModelViewSet):
         order.processed_at = timezone.now()
         order.save()
 
+        InvoiceService.create_invoice(order)
+
         return Response({
             "message": "Order moved to processing.",
             "order_id": order.id,
@@ -732,3 +744,21 @@ class VendorOrderViewSet(TenantViewMixin, viewsets.ReadOnlyModelViewSet):
             "order_id": order.id,
             "status": order.status
         })
+
+class InvoiceDownloadAPIView(APIView):
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+
+        invoice = Invoice.objects.get(pk=pk)
+
+        pdf = InvoicePDFGenerator.generate(invoice)
+
+        return FileResponse(
+            pdf,
+            as_attachment=True,
+            filename=f"{invoice.invoice_number}.pdf"
+        )
+
+    

@@ -2,6 +2,7 @@
 Django settings for config project.
 """
 
+from decimal import Decimal
 from pathlib import Path
 import os # imports os module for operating system interfaces (environments varabiles, file paths, etc)
 from datetime import timedelta # used for JWT token expiration times
@@ -375,3 +376,4 @@ KHALTI_PUBLIC_KEY = os.getenv("KHALTI_PUBLIC_KEY")
 WEBSITE_URL = "http://127.0.0.1:8000"
 
 PAYMENT_RETURN_URL = "http://127.0.0.1:8000/api/payments/verify/"
+VAT_PERCENTAGE = Decimal("13.00")

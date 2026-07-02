@@ -6,6 +6,8 @@ from products.models import Product
 from warehouses.models import Warehouse
 from tenants.models import TenantManager
 
+from django.utils import timezone
+
 
 class Order(models.Model):
 
@@ -194,3 +196,20 @@ class OrderItem(models.Model):
             f'{self.product.name} x '
             f'{self.quantity}'
         )
+    
+
+
+class Invoice(models.Model):
+    order = models.OneToOneField(
+        Order,
+        related_name="invoice",
+        on_delete=models.CASCADE
+    )
+    invoice_number = models.CharField(
+        max_length=50,
+        unique=True
+    )
+    generated_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.invoice_number
