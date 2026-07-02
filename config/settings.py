@@ -35,6 +35,7 @@ ALLOWED_HOSTS = [
     "localhost", # local computer name 
     ".railway.app", # Any subdomain of railway.app
     ".up.railway.app",  ### Add Railway default domain
+    "192.168.18.227",
 ]
 
 railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN")
@@ -167,7 +168,8 @@ INSTALLED_APPS = [
     "coupons",
     "wishlist",
     "notifications",
-    "cart"
+    "cart",
+    "payment",
 ]
 
 # MIDDLEWARE list of middleware components (process requests/responses in order)
@@ -279,7 +281,7 @@ REST_FRAMEWORK = {
     ),
 
     "DEFAULT_PERMISSION_CLASSES": (
-        "rest_framework.permissions.AllowAny",
+        "rest_framework.permissions.IsAuthenticated",
     ),
 
     "DEFAULT_SCHEMA_CLASS":
@@ -365,3 +367,11 @@ ESEWA_SETTINGS = {
     "SUCCESS_URL": "https://yourdomain.com/api/orders/esewa-verify/",
     "FAILURE_URL": "https://yourdomain.com/payment-failed",
 }
+
+
+KHALTI_SECRET_KEY = os.getenv("KHALTI_SECRET_KEY")
+KHALTI_PUBLIC_KEY = os.getenv("KHALTI_PUBLIC_KEY")
+
+WEBSITE_URL = "http://127.0.0.1:8000"
+
+PAYMENT_RETURN_URL = "http://127.0.0.1:8000/api/payments/verify/"

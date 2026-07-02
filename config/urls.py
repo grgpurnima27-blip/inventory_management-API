@@ -32,6 +32,11 @@ from inventory.views import InventoryViewSet
 from orders.views import OrderViewSet,VendorOrderViewSet
 from wishlist.views import WishlistViewSet
 
+from inventory.views import (
+    InventoryViewSet,
+    InventoryTransactionViewSet,
+)
+
 from django.conf import settings
 from django.conf.urls.static import static
 
@@ -44,6 +49,12 @@ router.register('inventory', InventoryViewSet, basename='inventory')
 router.register('orders', OrderViewSet, basename='orders')
 router.register('vendor/orders', VendorOrderViewSet, basename='vendor-orders')
 router.register('wishlist', WishlistViewSet, basename='wishlist')
+
+router.register(
+    "inventory-transactions",
+    InventoryTransactionViewSet,
+    basename="inventory-transactions",
+)
 
 
 urlpatterns = [
@@ -78,6 +89,9 @@ urlpatterns = [
 
     # Coupons
     path('api/', include('coupons.urls')),
+
+    #payment
+    path("api/payments/", include("payment.urls")),
 
     # OpenAPI Schema
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
