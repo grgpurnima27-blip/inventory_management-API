@@ -14,5 +14,10 @@ router.register(
     VendorOrderViewSet,
     basename="vendor-orders"
 )
+router.register(
+    "invoices",
+    InvoiceViewSet,
+    basename="invoices",
+)
 
 urlpatterns = router.urls

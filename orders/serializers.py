@@ -1,6 +1,6 @@
 from decimal import Decimal
 from rest_framework import serializers
-from .models import Order, OrderItem
+from .models import Invoice, Order, OrderItem
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -214,7 +214,13 @@ class OrderAdminSerializer(serializers.ModelSerializer):
 
         instance.save()
         return instance
+    
 
 
 # Default serializer alias
 OrderSerializer = OrderCustomerSerializer
+
+class InvoiceSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Invoice
+        fields = "__all__"

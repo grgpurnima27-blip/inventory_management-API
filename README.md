@@ -689,3 +689,24 @@ Use `techmart_admin` / `Admin@1234` with `POST /api/auth/vendor/login/` and past
 ## License
 
 MIT
+
+# Invoice Management feature
+## The system automatically generates a unique invoice number, creates an invoice record, and allows customers to download the invoice as a PDF after the order is processed/completed.
+
+```mermaid
+flowchart TD
+    A[Customer Places Order]
+    B[Order Processed / Completed]
+    C[Generate Invoice]
+    D[Generate Unique Invoice Number]
+    E["Invoice No: INV-20260702-4"]
+    F[Generate PDF Invoice]
+    G[Customer Downloads Invoice]
+
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+    E --> F
+    F --> G
+```

@@ -45,4 +45,5 @@ urlpatterns = [
     VendorDashboardReportAPIView.as_view(),
     name='vendor-dashboard'
 ),
+
 ]

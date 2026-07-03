@@ -2,6 +2,7 @@
 Django settings for config project.
 """
 
+from decimal import Decimal
 from pathlib import Path
 import os # imports os module for operating system interfaces (environments varabiles, file paths, etc)
 from datetime import timedelta # used for JWT token expiration times
@@ -138,6 +139,7 @@ FRONTEND_URL = os.getenv(
 )
 
 INSTALLED_APPS = [
+    "jazzmin",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes", # tracks django models 
@@ -375,3 +377,14 @@ KHALTI_PUBLIC_KEY = os.getenv("KHALTI_PUBLIC_KEY")
 WEBSITE_URL = "http://127.0.0.1:8000"
 
 PAYMENT_RETURN_URL = "http://127.0.0.1:8000/api/payments/verify/"
+VAT_PERCENTAGE = Decimal("13.00")
+
+JAZZMIN_SETTINGS = {
+    "site_title": "Inventory Management",
+    "site_header": "Inventory Management",
+    "site_brand": "Inventory Management",
+    "welcome_sign": "Welcome to Inventory Management Admin",
+    "copyright": "Satkriti",
+    "show_sidebar": True,
+    "navigation_expanded": True,
+}
