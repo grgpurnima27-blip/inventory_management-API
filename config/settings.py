@@ -223,6 +223,7 @@ if DATABASE_URL:
             DATABASE_URL,
             conn_max_age=0,   # Neon serverless: don't reuse connections across requests
             ssl_require=True, # Neon requires SSL — already in URL but this is a safety net
+            
         )
     }
 else:
@@ -231,6 +232,7 @@ else:
             "ENGINE":
             "django.db.backends.sqlite3",
             "NAME": BASE_DIR / "db.sqlite3",
+            "DISABLE_SERVER_SIDE_CURSORS": True,
         }
     }
 

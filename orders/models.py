@@ -70,11 +70,25 @@ class Order(models.Model):
         default='Kathmandu'
     )
 
+
+    delivery_address = models.TextField(blank=True)
+
+    delivery_latitude = models.FloatField(
+        null=True,
+        blank=True
+    )
+
+    delivery_longitude = models.FloatField(
+        null=True,
+        blank=True
+    )
+
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
         default=STATUS_PENDING
     )
+
 
     payment_method = models.CharField(
         max_length=10,
@@ -196,6 +210,7 @@ class OrderItem(models.Model):
             f'{self.product.name} x '
             f'{self.quantity}'
         )
+    
     
 
 
