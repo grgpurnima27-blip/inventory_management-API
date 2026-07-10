@@ -1,6 +1,12 @@
 from decimal import Decimal
 from rest_framework import serializers
 from .models import Invoice, Order, OrderItem
+from inventory.services.warehouse_allocator import allocate_warehouse
+
+from django.db import transaction
+from products.models import Product
+from .models import Invoice
+import uuid
 
 
 class OrderItemSerializer(serializers.ModelSerializer):
@@ -224,3 +230,106 @@ class InvoiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Invoice
         fields = "__all__"
+
+
+
+
+
+class OrderCreateItemSerializer(serializers.Serializer):
+    product = serializers.IntegerField()
+    quantity = serializers.IntegerField(min_value=1)
+
+
+class OrderCreateSerializer(serializers.Serializer):
+
+    customer_name = serializers.CharField()
+    delivery_city = serializers.CharField()
+
+    delivery_address = serializers.CharField()
+
+    delivery_latitude = serializers.FloatField()
+
+    delivery_longitude = serializers.FloatField()
+    payment_method = serializers.ChoiceField(
+        choices=Order.PAYMENT_METHOD_CHOICES
+    )
+
+    items = OrderCreateItemSerializer(many=True)
+
+    @transaction.atomic
+    def create(self, validated_data):
+        items = validated_data.pop("items")
+
+        request = self.context["request"]
+        tenant = request.tenant
+        user = request.user
+
+        order = Order.objects.create(
+            tenant=tenant,
+            user=user,
+            customer_name=validated_data["customer_name"],
+            delivery_city=validated_data["delivery_city"],
+            delivery_address=validated_data["delivery_address"],
+            delivery_latitude=validated_data["delivery_latitude"],
+            delivery_longitude=validated_data["delivery_longitude"],
+            payment_method=validated_data["payment_method"],
+        )
+
+        total_price = Decimal("0.00")
+
+        for item in items:
+            product = Product.objects.get(
+                id=item["product"],
+                tenant=tenant,
+            )
+
+            quantity = item["quantity"]
+            subtotal = product.price * quantity
+            total_price += subtotal
+
+            allocation = allocate_warehouse(
+                tenant=tenant,
+                product=product,
+                quantity=quantity,
+                customer_latitude=validated_data["delivery_latitude"],
+                customer_longitude=validated_data["delivery_longitude"],
+            )
+
+            if allocation is None:
+                raise serializers.ValidationError(
+                    f"No warehouse has enough stock for {product.name}"
+                )
+
+            inventory = allocation["inventory"]
+            warehouse = allocation["warehouse"]
+
+            OrderItem.objects.create(
+                order=order,
+                product=product,
+                warehouse=warehouse,
+                quantity=quantity,
+                unit_price=product.price,
+            )
+
+            inventory.quantity -= quantity
+            inventory.save()
+
+            if hasattr(product, "quantity"):
+                product.quantity -= quantity
+                product.save()
+
+        order.original_amount = total_price
+        order.total_price = total_price
+        order.save()
+
+
+        print("Creating invoice...")
+
+        invoice = Invoice.objects.create(
+            order=order,
+            invoice_number=f"INV-{uuid.uuid4().hex[:8].upper()}",
+        )
+
+        print("Invoice created:", invoice.id)
+
+        return order

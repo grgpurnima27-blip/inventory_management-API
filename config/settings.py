@@ -140,6 +140,7 @@ FRONTEND_URL = os.getenv(
 )
 
 INSTALLED_APPS = [
+    "jazzmin",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes", # tracks django models 
@@ -223,6 +224,7 @@ if DATABASE_URL:
             DATABASE_URL,
             conn_max_age=0,   # Neon serverless: don't reuse connections across requests
             ssl_require=True, # Neon requires SSL — already in URL but this is a safety net
+            
         )
     }
 else:
@@ -231,6 +233,7 @@ else:
             "ENGINE":
             "django.db.backends.sqlite3",
             "NAME": BASE_DIR / "db.sqlite3",
+            "DISABLE_SERVER_SIDE_CURSORS": True,
         }
     }
 
@@ -378,3 +381,13 @@ WEBSITE_URL = "http://127.0.0.1:8000"
 
 PAYMENT_RETURN_URL = "http://127.0.0.1:8000/api/payments/verify/"
 VAT_PERCENTAGE = Decimal("13.00")
+
+JAZZMIN_SETTINGS = {
+    "site_title": "Inventory Management",
+    "site_header": "Inventory Management",
+    "site_brand": "Inventory Management",
+    "welcome_sign": "Welcome to Inventory Management Admin",
+    "copyright": "Satkriti",
+    "show_sidebar": True,
+    "navigation_expanded": True,
+}
