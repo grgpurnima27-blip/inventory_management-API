@@ -27,21 +27,19 @@ class Order(models.Model):
 
     PAYMENT_METHOD_ESEWA  = 'esewa'
     PAYMENT_METHOD_COD    = 'cod'
-    PAYMENT_METHOD_KHALTI = 'khalti'  #  NEW: added Khalti
+    PAYMENT_METHOD_KHALTI = 'khalti'
 
     PAYMENT_METHOD_CHOICES = [
         (PAYMENT_METHOD_ESEWA,  'eSewa'),
         (PAYMENT_METHOD_COD,    'Cash on Delivery'),
-        (PAYMENT_METHOD_KHALTI, 'Khalti'),  #  NEW: added Khalti choice
+        (PAYMENT_METHOD_KHALTI, 'Khalti'),
     ]
 
-    #  NEW: payment status constants (was raw strings before)
     PAYMENT_STATUS_PENDING  = 'pending'
     PAYMENT_STATUS_PAID     = 'paid'
     PAYMENT_STATUS_FAILED   = 'failed'
     PAYMENT_STATUS_REFUNDED = 'refunded'
 
-    # NEW: payment status choices using constants
     PAYMENT_STATUS_CHOICES = [
         (PAYMENT_STATUS_PENDING,  'Pending'),
         (PAYMENT_STATUS_PAID,     'Paid'),
@@ -64,6 +62,14 @@ class Order(models.Model):
     )
 
     customer_name = models.CharField(max_length=255)
+
+    # ========== FIX: ADD delivery_address field ==========
+    delivery_address = models.TextField(
+        null=True,      # Allow NULL in database
+        blank=True,     # Allow empty in forms
+        default=''      # Default empty string
+    )
+    # =====================================================
 
     delivery_city = models.CharField(
         max_length=100,
@@ -96,14 +102,12 @@ class Order(models.Model):
         default=PAYMENT_METHOD_COD
     )
 
-    #  UPDATED: now uses PAYMENT_STATUS_CHOICES and constant default
     payment_status = models.CharField(
         max_length=20,
         choices=PAYMENT_STATUS_CHOICES,
         default=PAYMENT_STATUS_PENDING
     )
 
-    # UPDATED: help text updated to mention Khalti
     payment_transaction_id = models.CharField(
         max_length=255,
         blank=True,
@@ -152,6 +156,9 @@ class Order(models.Model):
             )
         if len(self.delivery_city.strip()) < 2:
             errors['delivery_city'] = 'Delivery city is invalid.'
+        # Optional: Validate delivery_address if you want
+        if self.delivery_address and len(self.delivery_address.strip()) < 5:
+            errors['delivery_address'] = 'Delivery address must be at least 5 characters long.'
         if errors:
             raise ValidationError(errors)
 
@@ -159,7 +166,6 @@ class Order(models.Model):
         self.full_clean()
         super().save(*args, **kwargs)
 
-    # UPDATED: added payment_method to __str__
     def __str__(self):
         return (
             f'Order #{self.id} - '
@@ -210,8 +216,6 @@ class OrderItem(models.Model):
             f'{self.product.name} x '
             f'{self.quantity}'
         )
-    
-    
 
 
 class Invoice(models.Model):

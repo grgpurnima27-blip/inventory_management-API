@@ -37,6 +37,7 @@ ALLOWED_HOSTS = [
     ".railway.app", # Any subdomain of railway.app
     ".up.railway.app",  ### Add Railway default domain
     "192.168.18.227",
+    "192.168.18.220",
 ]
 
 railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN")
