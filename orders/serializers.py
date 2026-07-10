@@ -58,6 +58,7 @@ class OrderCustomerSerializer(serializers.ModelSerializer):
             'id',
             'user',
             'customer_name',
+            'delivery_address',      # Added
             'delivery_city',
             'status',
             'payment_method',
@@ -76,7 +77,7 @@ class OrderCustomerSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id',
-            'delivery_city',
+            'user',
             'status',
             'payment_status',
             'original_amount',
@@ -90,6 +91,11 @@ class OrderCustomerSerializer(serializers.ModelSerializer):
             'paid_at',
             'created_at',
         ]
+        # Add extra_kwargs to make fields optional with defaults
+        extra_kwargs = {
+            'delivery_address': {'required': False, 'allow_blank': True, 'default': ''},
+            'delivery_city': {'required': False, 'allow_blank': True, 'default': 'Kathmandu'},
+        }
 
 
 class OrderAdminSerializer(serializers.ModelSerializer):
@@ -118,6 +124,7 @@ class OrderAdminSerializer(serializers.ModelSerializer):
             'id',
             'user',
             'customer_name',
+            'delivery_address',      # Added
             'delivery_city',
             'status',
             'payment_method',
@@ -137,6 +144,7 @@ class OrderAdminSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id',
+            'user',
             'original_amount',
             'discount_amount',
             'total_price',
@@ -149,6 +157,11 @@ class OrderAdminSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
+        # Add extra_kwargs to make fields optional with defaults
+        extra_kwargs = {
+            'delivery_address': {'required': False, 'allow_blank': True, 'default': ''},
+            'delivery_city': {'required': False, 'allow_blank': True, 'default': 'Kathmandu'},
+        }
 
     def validate_status(self, value):
         order = self.instance
@@ -171,21 +184,19 @@ class OrderAdminSerializer(serializers.ModelSerializer):
             )
         return value
 
-    ### UPDATED: uses constants instead of raw strings
     def validate_payment_status(self, value):
         order = self.instance
         if not order:
             return value
         if (
-            order.payment_status == Order.PAYMENT_STATUS_PAID and  # ← UPDATED
-            value != Order.PAYMENT_STATUS_PAID                     # ← UPDATED
+            order.payment_status == Order.PAYMENT_STATUS_PAID and
+            value != Order.PAYMENT_STATUS_PAID
         ):
             raise serializers.ValidationError(
-                'Cannot change payment status once it is "paid".'  # ← UPDATED message
+                'Cannot change payment status once it is "paid".'
             )
         return value
 
-    ###3 UPDATED: uses constants instead of raw strings
     def update(self, instance, validated_data):
         from django.utils import timezone
 
@@ -206,8 +217,8 @@ class OrderAdminSerializer(serializers.ModelSerializer):
 
         if new_payment_status:
             if (
-                new_payment_status == Order.PAYMENT_STATUS_PAID and      # ← UPDATED
-                instance.payment_status != Order.PAYMENT_STATUS_PAID     # ← UPDATED
+                new_payment_status == Order.PAYMENT_STATUS_PAID and
+                instance.payment_status != Order.PAYMENT_STATUS_PAID
             ):
                 instance.paid_at = timezone.now()
             instance.payment_status = new_payment_status
@@ -215,7 +226,6 @@ class OrderAdminSerializer(serializers.ModelSerializer):
         instance.save()
         return instance
     
-
 
 # Default serializer alias
 OrderSerializer = OrderCustomerSerializer
