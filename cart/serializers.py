@@ -1,69 +1,179 @@
 from rest_framework import serializers
-from .models import Cart, CartItem
+
+from .models import (
+    Cart,
+    CartItem,
+    SavedItem,
+)
+
+from products.models import Product
 
 
-class AddToCartSerializer(serializers.Serializer):
-    product_id = serializers.IntegerField(min_value=1)
-    quantity = serializers.IntegerField(min_value=1, default=1)
+# ---------------------------------------------------------
+# Product (inside cart)
+# ---------------------------------------------------------
+
+class CartProductSerializer(serializers.ModelSerializer):
+
+    vendor = serializers.CharField(
+        source="tenant.name",
+        read_only=True
+    )
+
+    class Meta:
+        model = Product
+        fields = [
+            "id",
+            "name",
+            "price",
+            "quantity",
+            "vendor",
+        ]
 
 
-class UpdateCartItemSerializer(serializers.Serializer):
-    quantity = serializers.IntegerField(min_value=1)
-
+# ---------------------------------------------------------
+# Cart Item
+# ---------------------------------------------------------
 
 class CartItemSerializer(serializers.ModelSerializer):
-    product_name = serializers.CharField(source="product.name", read_only=True)
-    product_price = serializers.DecimalField(source="product.price", max_digits=10, decimal_places=2, read_only=True)
-    vendor_id = serializers.IntegerField(source="product.tenant.id", read_only=True)
-    vendor_name = serializers.CharField(source="product.tenant.name", read_only=True)
-    subtotal = serializers.SerializerMethodField()
+
+    product = CartProductSerializer(read_only=True)
+
+    subtotal = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        read_only=True
+    )
 
     class Meta:
         model = CartItem
         fields = [
-            "id", "product", "product_name", "product_price",
-            "vendor_id", "vendor_name", "quantity", "subtotal"
+            "id",
+            "product",
+            "quantity",
+            "subtotal",
         ]
 
-    def get_subtotal(self, obj):
-        return obj.product.price * obj.quantity
 
+# ---------------------------------------------------------
+# Cart
+# ---------------------------------------------------------
 
 class CartSerializer(serializers.ModelSerializer):
-    items = CartItemSerializer(many=True, read_only=True)
-    vendors = serializers.SerializerMethodField()
-    total = serializers.SerializerMethodField()
+
+    items = CartItemSerializer(
+        many=True,
+        read_only=True
+    )
+
+    total_items = serializers.ReadOnlyField()
+
+    subtotal = serializers.ReadOnlyField()
+
+    discount_amount = serializers.ReadOnlyField()
+
+    total = serializers.ReadOnlyField()
+
+    coupon = serializers.SerializerMethodField()
 
     class Meta:
         model = Cart
-        fields = ["id", "items", "vendors", "total", "created_at", "updated_at"]
+        fields = [
+            "id",
+            "items",
+            "total_items",
+            "subtotal",
+            "discount_amount",
+            "total",
+            "coupon",
+        ]
 
-    def get_total(self, obj):
-        return sum(item.product.price * item.quantity for item in obj.items.all())
+    def get_coupon(self, obj):
+        if obj.applied_coupon:
+            return obj.applied_coupon.code
+        return None
 
-    def get_vendors(self, obj):
-        grouped = {}
 
-        for item in obj.items.select_related("product__tenant").all():
-            tenant = item.product.tenant
-            key = tenant.id if tenant else 0
+# ---------------------------------------------------------
+# Add To Cart
+# ---------------------------------------------------------
 
-            if key not in grouped:
-                grouped[key] = {
-                    "vendor_id": tenant.id if tenant else None,
-                    "vendor_name": tenant.name if tenant else "No vendor",
-                    "items": [],
-                    "subtotal": 0,
-                }
+class AddToCartSerializer(serializers.Serializer):
 
-            grouped[key]["items"].append(CartItemSerializer(item).data)
-            grouped[key]["subtotal"] += item.product.price * item.quantity
-
-        return list(grouped.values())
-class CartCheckoutSerializer(serializers.Serializer):
-    customer_name = serializers.CharField()
-    delivery_city = serializers.CharField(required=False, allow_blank=True)
-    payment_method = serializers.ChoiceField(
-        choices=["cod", "esewa", "khalti"],
-        default="cod"
+    product = serializers.PrimaryKeyRelatedField(
+        queryset=Product.objects.all()
     )
+
+    quantity = serializers.IntegerField(
+        min_value=1
+    )
+
+
+# ---------------------------------------------------------
+# Update Cart Item
+# ---------------------------------------------------------
+
+class UpdateCartItemSerializer(serializers.Serializer):
+
+    quantity = serializers.IntegerField(
+        min_value=1
+    )
+
+
+# ---------------------------------------------------------
+# Saved Item
+# ---------------------------------------------------------
+
+class SavedItemSerializer(serializers.ModelSerializer):
+
+    product = CartProductSerializer(
+        read_only=True
+    )
+
+    subtotal = serializers.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        read_only=True
+    )
+
+    class Meta:
+        model = SavedItem
+        fields = [
+            "id",
+            "product",
+            "quantity",
+            "subtotal",
+            "created_at",
+        ]
+
+
+# ---------------------------------------------------------
+# Checkout
+# ---------------------------------------------------------
+
+class CartCheckoutSerializer(serializers.Serializer):
+
+    customer_name = serializers.CharField(
+        max_length=200
+    )
+
+    payment_method = serializers.ChoiceField(
+        choices=[
+            ("COD", "Cash on Delivery"),
+            ("ESEWA", "eSewa"),
+            ("KHALTI", "Khalti"),
+        ]
+    )
+
+    delivery_city = serializers.CharField(
+        required=False,
+        allow_blank=True
+    )
+
+class MoveToCartSerializer(serializers.Serializer):
+    saved_item_id = serializers.IntegerField(
+        help_text="ID of the saved item to move back to cart."
+    )
+
+class SaveForLaterSerializer(serializers.Serializer):
+    item_id = serializers.IntegerField()
