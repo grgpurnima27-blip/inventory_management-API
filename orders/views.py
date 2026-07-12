@@ -127,6 +127,7 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 value={
                     'customer_name':  'Purnima',
                     'payment_method': 'cod',
+                    'delivery_city':'pokhara',
                     'items': [
                         {'product': 1, 'quantity': 2},
                         {'product': 3, 'quantity': 1},
@@ -139,6 +140,7 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 value={
                     'customer_name':  'Purnima',
                     'payment_method': 'esewa',
+                    'delivery_city':'pokhara',
                     'items': [{'product': 2, 'quantity': 1}]
                 },
                 request_only=True,
@@ -148,6 +150,7 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 value={
                     'customer_name':  'Purnima',
                     'payment_method': 'khalti',
+                    'delivery_city':'pokhara',
                     'items': [{'product': 4, 'quantity': 3}]
                 },
                 request_only=True,
