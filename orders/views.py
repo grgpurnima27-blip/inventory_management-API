@@ -24,12 +24,30 @@ from django.http import FileResponse, FileResponse, HttpResponse
 from .services import InvoiceService
 from .pdf_generator import InvoicePDFGenerator
 
+from inventory.services.warehouse_allocator import allocate_warehouse
+
 from .models import Invoice, Invoice, Order, OrderItem
 from .serializers import (
     OrderSerializer,
     OrderCustomerSerializer,
     OrderAdminSerializer,
 )
+
+from rest_framework import generics
+from .models import Order
+from .serializers import OrderCreateSerializer
+
+
+class OrderCreateAPIView(generics.CreateAPIView):
+
+    serializer_class = OrderCreateSerializer
+
+    queryset = Order.objects.all()
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["request"] = self.request
+        return context
 
 
 # Inline serializers for Swagger docs 
@@ -127,9 +145,10 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 value={
                     'customer_name':  'Purnima',
                     'payment_method': 'cod',
+                    'delivery_city':'pokhara',
                     'items': [
                         {'product': 1, 'quantity': 2},
-                        {'product': 3, 'quantity': 1},
+                        {'product': 3, 'quantity': 1}
                     ]
                 },
                 request_only=True,
@@ -139,6 +158,7 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 value={
                     'customer_name':  'Purnima',
                     'payment_method': 'esewa',
+                    'delivery_city':'pokhara',
                     'items': [{'product': 2, 'quantity': 1}]
                 },
                 request_only=True,
@@ -148,6 +168,7 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 value={
                     'customer_name':  'Purnima',
                     'payment_method': 'khalti',
+                    'delivery_city':'pokhara',
                     'items': [{'product': 4, 'quantity': 3}]
                 },
                 request_only=True,
@@ -239,25 +260,24 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                     {"error": f"Product with id {product_id} does not exist."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
-            inventory = Inventory.objects.select_for_update().filter(
+            allocation = allocate_warehouse(
                 tenant=product.tenant,
                 product=product,
-                warehouse__tenant=product.tenant,
-                warehouse__city__iexact=delivery_city,
-                quantity__gte=quantity
-            ).first()
+                quantity=quantity,
+                customer_latitude=float(data["delivery_latitude"]),
+                customer_longitude=float(data["delivery_longitude"]),
+            )
 
-            if not inventory:
+            if allocation is None:
                 return Response(
                     {
-                        "error": (
-                            f'"{product.name}" is not available in '
-                            f'{delivery_city} with the requested quantity.'
-                        )
+                        "error": f'No warehouse has enough stock for "{product.name}".'
                     },
                     status=status.HTTP_400_BAD_REQUEST
-                )
+            )
+
+            inventory = allocation["inventory"]
+            warehouse = allocation["warehouse"]
 
             if product.quantity < quantity:
                 return Response(
@@ -278,7 +298,7 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             vendor_groups[tenant_id]["original_amount"] += unit_price * quantity
             vendor_groups[tenant_id]["items"].append({
                 "product": product,
-                "warehouse": inventory.warehouse,
+                "warehouse": warehouse,
                 "inventory": inventory,
                 "quantity": quantity,
                 "unit_price": unit_price,
@@ -299,17 +319,22 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
 
             try:
                 order = Order.objects.create(
-                    tenant=group["tenant"],
-                    user=request.user,
-                    customer_name=data.get("customer_name"),
-                    delivery_city=delivery_city,
-                    payment_method=payment_method,
-                    original_amount=original_amount,
-                    discount_amount=discount_amount,
-                    total_price=total_price,
-                    status=Order.STATUS_PENDING,
-                    payment_status=Order.PAYMENT_STATUS_PENDING,
-                )
+                tenant=group["tenant"],
+                user=request.user,
+                customer_name=data.get("customer_name"),
+                delivery_city=delivery_city,
+
+                delivery_address=data.get("delivery_address"),
+                delivery_latitude=data.get("delivery_latitude"),
+                delivery_longitude=data.get("delivery_longitude"),
+
+                payment_method=payment_method,
+                original_amount=original_amount,
+                discount_amount=discount_amount,
+                total_price=total_price,
+                status=Order.STATUS_PENDING,
+                payment_status=Order.PAYMENT_STATUS_PENDING,
+  )
             except ValidationError as e:
                 error_msg = e.message_dict if hasattr(e, "message_dict") else str(e)
                 return Response(
@@ -334,6 +359,8 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
 
                 product.quantity -= item_data["quantity"]
                 product.save()
+
+            InvoiceService.create_invoice(order)
 
             created_orders.append(order)
 
