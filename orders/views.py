@@ -24,6 +24,8 @@ from django.http import FileResponse, FileResponse, HttpResponse
 from .services import InvoiceService
 from .pdf_generator import InvoicePDFGenerator
 
+from inventory.services.warehouse_allocator import allocate_warehouse
+
 from .models import Invoice, Invoice, Order, OrderItem
 from .serializers import (
     OrderSerializer,
@@ -31,28 +33,44 @@ from .serializers import (
     OrderAdminSerializer,
 )
 
+from rest_framework import generics
+from .models import Order
+from .serializers import OrderCreateSerializer
+
+
+class OrderCreateAPIView(generics.CreateAPIView):
+    serializer_class = OrderCreateSerializer
+    queryset = Order.objects.all()
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["request"] = self.request
+        return context
+
 
 # Inline serializers for Swagger docs 
-
 class OrderItemCreateSerializer(serializers.Serializer):
     product  = serializers.IntegerField(help_text='Product ID')
     quantity = serializers.IntegerField(help_text='Quantity', min_value=1)
 
 
-# UPDATED: added khalti to choices; delivery_city auto-filled from profile
+# UPDATED: Added khalti to choices; delivery fields auto-filled from profile
 class OrderCreateSerializer(serializers.Serializer):
-    customer_name  = serializers.CharField(help_text='Customer full name')
+    customer_name = serializers.CharField(help_text='Customer full name')
     payment_method = serializers.ChoiceField(
         choices=['esewa', 'khalti', 'cod'],
         default='cod',
         help_text='esewa, khalti or cod'
     )
+    delivery_city = serializers.CharField(required=False, help_text='Delivery city')
+    delivery_address = serializers.CharField(required=False, help_text='Delivery address')
+    delivery_latitude = serializers.FloatField(required=False, help_text='Delivery latitude')
+    delivery_longitude = serializers.FloatField(required=False, help_text='Delivery longitude')
     items = OrderItemCreateSerializer(many=True)
 
 
 class ConfirmPaymentSerializer(serializers.Serializer):
     transaction_id = serializers.CharField(
-        # mentions both eSewa and Khalti
         help_text='Transaction ID from eSewa or Khalti app after payment.'
     )
 
@@ -76,22 +94,17 @@ class AdminUpdateOrderSerializer(serializers.Serializer):
     )
 
 
-# ###ViewSet 
-
 class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
-
     permission_classes = [IsAuthenticatedCustomer]
 
     queryset = Order.objects.select_related('user').prefetch_related(
         'items',
         'items__product',
-        'items__warehou' \
-        'se',
+        'items__warehouse',
     )
 
-
     def get_queryset(self):
-        qs = super().get_queryset()  # applies TenantViewMixin tenant filter
+        qs = super().get_queryset()
         user = self.request.user
         if getattr(user, 'role', None) == 'admin':
             return qs
@@ -102,18 +115,15 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             return OrderAdminSerializer
         return OrderCustomerSerializer
 
-    # Create Order 
-
     @extend_schema(
         summary='Create Order',
-        ##### description now mentions Khalti
         description=(
             'Create a new order.\n\n'
             '**COD**: Pay on delivery — no extra steps.\n\n'
             '**eSewa**: Pay on eSewa app then call '
             '`/confirm-payment/` with your transaction ID.\n\n'
-            '**Khalti**: Pay on Khalti app then call '       #  NEW
-            '`/confirm-payment/` with your transaction ID.'  # NEW
+            '**Khalti**: Pay on Khalti app then call '
+            '`/confirm-payment/` with your transaction ID.'
         ),
         request=OrderCreateSerializer,
         responses={
@@ -125,11 +135,15 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             OpenApiExample(
                 'COD Order',
                 value={
-                    'customer_name':  'Purnima',
+                    'customer_name': 'Purnima',
                     'payment_method': 'cod',
+                    'delivery_city': 'pokhara',
+                    'delivery_address': 'Lakeside, Pokhara',
+                    'delivery_latitude': 28.2096,
+                    'delivery_longitude': 83.9856,
                     'items': [
                         {'product': 1, 'quantity': 2},
-                        {'product': 3, 'quantity': 1},
+                        {'product': 3, 'quantity': 1}
                     ]
                 },
                 request_only=True,
@@ -137,8 +151,12 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             OpenApiExample(
                 'eSewa Order',
                 value={
-                    'customer_name':  'Purnima',
+                    'customer_name': 'Purnima',
                     'payment_method': 'esewa',
+                    'delivery_city': 'kathmandu',
+                    'delivery_address': 'Thamel, Kathmandu',
+                    'delivery_latitude': 27.7172,
+                    'delivery_longitude': 85.3240,
                     'items': [{'product': 2, 'quantity': 1}]
                 },
                 request_only=True,
@@ -146,22 +164,18 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             OpenApiExample(
                 'Khalti Order',
                 value={
-                    'customer_name':  'Purnima',
+                    'customer_name': 'Purnima',
                     'payment_method': 'khalti',
+                    'delivery_city': 'lalitpur',
+                    'delivery_address': 'Patan, Lalitpur',
+                    'delivery_latitude': 27.6644,
+                    'delivery_longitude': 85.3188,
                     'items': [{'product': 4, 'quantity': 3}]
                 },
                 request_only=True,
             ),
         ]
     )
-#     @extend_schema(
-#     parameters=[
-#         OpenApiParameter(
-#             name="X-Tenant-Slug",
-#             type=str,
-#             location=OpenApiParameter.HEADER,
-#             required=True,
-#             description="Vendor tenant slug. Example: glow-beauty-store-123",
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         data = request.data
@@ -190,6 +204,7 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Handle delivery city
         delivery_city = data.get("delivery_city", "").strip()
         if not delivery_city:
             try:
@@ -202,6 +217,28 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 {"error": "No delivery city set. Provide delivery_city or update your profile city."},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        # Handle delivery address
+        delivery_address = data.get("delivery_address", "").strip()
+
+        # Handle delivery coordinates (MAKE OPTIONAL)
+        delivery_latitude = data.get("delivery_latitude")
+        delivery_longitude = data.get("delivery_longitude")
+
+        # If not provided, try to get from user's profile
+        if delivery_latitude is None or delivery_longitude is None:
+            try:
+                if hasattr(request.user, 'profile'):
+                    profile = request.user.profile
+                    if delivery_latitude is None and hasattr(profile, 'latitude'):
+                        delivery_latitude = float(profile.latitude) if profile.latitude else None
+                    if delivery_longitude is None and hasattr(profile, 'longitude'):
+                        delivery_longitude = float(profile.longitude) if profile.longitude else None
+            except Exception:
+                pass
+
+        # Store coordinates for later use
+        has_coordinates = delivery_latitude is not None and delivery_longitude is not None
 
         vendor_groups = {}
 
@@ -240,24 +277,33 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            inventory = Inventory.objects.select_for_update().filter(
-                tenant=product.tenant,
-                product=product,
-                warehouse__tenant=product.tenant,
-                warehouse__city__iexact=delivery_city,
-                quantity__gte=quantity
-            ).first()
+            # Allocate warehouse (with or without coordinates)
+            if has_coordinates:
+                allocation = allocate_warehouse(
+                    tenant=product.tenant,
+                    product=product,
+                    quantity=quantity,
+                    customer_latitude=delivery_latitude,
+                    customer_longitude=delivery_longitude,
+                )
+            else:
+                # Try to allocate without coordinates
+                allocation = allocate_warehouse(
+                    tenant=product.tenant,
+                    product=product,
+                    quantity=quantity,
+                    customer_latitude=None,
+                    customer_longitude=None,
+                )
 
-            if not inventory:
+            if allocation is None:
                 return Response(
-                    {
-                        "error": (
-                            f'"{product.name}" is not available in '
-                            f'{delivery_city} with the requested quantity.'
-                        )
-                    },
+                    {"error": f'No warehouse has enough stock for "{product.name}".'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+
+            inventory = allocation["inventory"]
+            warehouse = allocation["warehouse"]
 
             if product.quantity < quantity:
                 return Response(
@@ -278,7 +324,7 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             vendor_groups[tenant_id]["original_amount"] += unit_price * quantity
             vendor_groups[tenant_id]["items"].append({
                 "product": product,
-                "warehouse": inventory.warehouse,
+                "warehouse": warehouse,
                 "inventory": inventory,
                 "quantity": quantity,
                 "unit_price": unit_price,
@@ -303,6 +349,9 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                     user=request.user,
                     customer_name=data.get("customer_name"),
                     delivery_city=delivery_city,
+                    delivery_address=delivery_address,
+                    delivery_latitude=delivery_latitude,
+                    delivery_longitude=delivery_longitude,
                     payment_method=payment_method,
                     original_amount=original_amount,
                     discount_amount=discount_amount,
@@ -335,6 +384,8 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 product.quantity -= item_data["quantity"]
                 product.save()
 
+            InvoiceService.create_invoice(order)
+
             created_orders.append(order)
 
         return Response(
@@ -343,7 +394,8 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 "orders": OrderCustomerSerializer(created_orders, many=True).data,
             },
             status=status.HTTP_201_CREATED
-    )
+        )
+
     def update(self, request, *args, **kwargs):
         if request.user.role != 'admin':
             return Response(
@@ -351,8 +403,8 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        order              = self.get_object()
-        new_status         = request.data.get('status')
+        order = self.get_object()
+        new_status = request.data.get('status')
         new_payment_status = request.data.get('payment_status')
 
         if new_status:
@@ -366,40 +418,28 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             allowed = valid_transitions.get(order.status, [])
             if new_status not in allowed:
                 return Response(
-                    {
-                        'error': (
-                            f'Cannot move from "{order.status}" to "{new_status}". '
-                            f'Allowed: {allowed}'
-                        )
-                    },
+                    {'error': f'Cannot move from "{order.status}" to "{new_status}". Allowed: {allowed}'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
             timestamp_map = {
                 Order.STATUS_PROCESSING: 'processed_at',
-                Order.STATUS_SHIPPED:    'shipped_at',
-                Order.STATUS_COMPLETED:  'completed_at',
-                Order.STATUS_CANCELLED:  'cancelled_at',
+                Order.STATUS_SHIPPED: 'shipped_at',
+                Order.STATUS_COMPLETED: 'completed_at',
+                Order.STATUS_CANCELLED: 'cancelled_at',
             }
             timestamp_field = timestamp_map.get(new_status)
             if timestamp_field:
                 setattr(order, timestamp_field, timezone.now())
             order.status = new_status
 
-        ##### UPDATED: uses constants instead of raw strings
         if new_payment_status:
-            if (
-                order.payment_status == Order.PAYMENT_STATUS_PAID and  
-                new_payment_status != Order.PAYMENT_STATUS_PAID        
-            ):
+            if order.payment_status == Order.PAYMENT_STATUS_PAID and new_payment_status != Order.PAYMENT_STATUS_PAID:
                 return Response(
                     {'error': 'Cannot change payment status once it is "paid".'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            if (
-                new_payment_status == Order.PAYMENT_STATUS_PAID and   
-                order.payment_status != Order.PAYMENT_STATUS_PAID      
-            ):
+            if new_payment_status == Order.PAYMENT_STATUS_PAID and order.payment_status != Order.PAYMENT_STATUS_PAID:
                 order.paid_at = timezone.now()
             order.payment_status = new_payment_status
 
@@ -413,8 +453,6 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
     def partial_update(self, request, *args, **kwargs):
         return self.update(request, *args, **kwargs)
 
-    #### Delete Order (Admin) 
-
     def destroy(self, request, *args, **kwargs):
         if request.user.role != 'admin':
             return Response(
@@ -422,8 +460,6 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         return super().destroy(request, *args, **kwargs)
-
-    # ##Cancel Order 
 
     @extend_schema(
         summary='Cancel Order',
@@ -458,7 +494,6 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # ## NEW: added check for completed orders
         if order.status == Order.STATUS_COMPLETED:
             return Response(
                 {'error': 'Cannot cancel a completed order.'},
@@ -473,7 +508,7 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             inventory.quantity += item.quantity
             inventory.save()
 
-        order.status       = Order.STATUS_CANCELLED
+        order.status = Order.STATUS_CANCELLED
         order.cancelled_at = timezone.now()
         order.save()
 
@@ -481,8 +516,6 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             {'message': 'Order cancelled successfully. Inventory restored.'},
             status=status.HTTP_200_OK
         )
-
-    # Track Order 
 
     @extend_schema(
         summary='Track Order',
@@ -506,59 +539,53 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             )
 
         timeline = [{
-            'stage':     'Order Placed',
-            'status':    'completed',
+            'stage': 'Order Placed',
+            'status': 'completed',
             'timestamp': order.created_at
         }]
 
         stages = [
             ('processing', 'Processing', order.processed_at),
-            ('shipped',    'Shipped',    order.shipped_at),
-            ('completed',  'Delivered',  order.completed_at),
-            ('cancelled',  'Cancelled',  order.cancelled_at),
+            ('shipped', 'Shipped', order.shipped_at),
+            ('completed', 'Delivered', order.completed_at),
+            ('cancelled', 'Cancelled', order.cancelled_at),
         ]
 
         for stage_key, stage_label, timestamp in stages:
             if timestamp:
                 timeline.append({
-                    'stage':     stage_label,
-                    'status':    'completed',
+                    'stage': stage_label,
+                    'status': 'completed',
                     'timestamp': timestamp
                 })
-            elif order.status not in [
-                Order.STATUS_CANCELLED,
-                Order.STATUS_COMPLETED,
-            ]:
+            elif order.status not in [Order.STATUS_CANCELLED, Order.STATUS_COMPLETED]:
                 if stage_key != 'cancelled':
                     timeline.append({
-                        'stage':     stage_label,
-                        'status':    'pending',
+                        'stage': stage_label,
+                        'status': 'pending',
                         'timestamp': None
                     })
 
         return Response(
             {
-                'order_id':       order.id,
-                'customer_name':  order.customer_name,
+                'order_id': order.id,
+                'customer_name': order.customer_name,
                 'current_status': order.status,
-                'delivery_city':  order.delivery_city,
-                'total_price':    str(order.total_price),
+                'delivery_city': order.delivery_city,
+                'total_price': str(order.total_price),
                 'payment_method': order.payment_method,
                 'payment_status': order.payment_status,
-                'timeline':       timeline,
+                'timeline': timeline,
             },
             status=status.HTTP_200_OK
         )
 
-    # Confirm Payment (eSewa / Khalti) 
-
     @extend_schema(
-        #UPDATED: title mentions both eSewa and Khalti
         summary='Confirm eSewa / Khalti Payment',
         description=(
             'After paying on eSewa or Khalti app, '
             'submit your transaction ID to confirm payment.\n\n'
-            'Not needed for COD orders.'  
+            'Not needed for COD orders.'
         ),
         request=ConfirmPaymentSerializer,
         responses={
@@ -573,7 +600,6 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 value={'transaction_id': 'ESEWA-TXN-123456789'},
                 request_only=True,
             ),
-            # NEW: added Khalti 
             OpenApiExample(
                 'Confirm Khalti Payment',
                 value={'transaction_id': 'KHALTI-TXN-987654321'},
@@ -596,15 +622,12 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        #  UPDATED: now checks COD instead of eSewa
-        # (allows both eSewa and Khalti to confirm)
         if order.payment_method == Order.PAYMENT_METHOD_COD:
             return Response(
                 {'error': 'This order uses Cash on Delivery. No payment confirmation needed.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # UPDATED: uses constant
         if order.payment_status == Order.PAYMENT_STATUS_PAID:
             return Response(
                 {'error': 'Payment already confirmed for this order.'},
@@ -624,43 +647,37 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if Order.objects.filter(
-            payment_transaction_id=transaction_id
-        ).exclude(id=order.id).exists():
+        if Order.objects.filter(payment_transaction_id=transaction_id).exclude(id=order.id).exists():
             return Response(
                 {'error': 'This transaction ID has already been used.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # UPDATED: uses constants
-        order.payment_status         = Order.PAYMENT_STATUS_PAID
+        order.payment_status = Order.PAYMENT_STATUS_PAID
         order.payment_transaction_id = transaction_id
-        order.paid_at                = timezone.now()
+        order.paid_at = timezone.now()
 
         if order.status == Order.STATUS_PENDING:
-            order.status       = Order.STATUS_PROCESSING
+            order.status = Order.STATUS_PROCESSING
             order.processed_at = timezone.now()
 
         order.save()
 
-        #UPDATED: shows correct payment label for eSewa or Khalti
-        payment_label = (
-            'eSewa'
-            if order.payment_method == Order.PAYMENT_METHOD_ESEWA
-            else 'Khalti'
-        )
+        payment_label = 'eSewa' if order.payment_method == Order.PAYMENT_METHOD_ESEWA else 'Khalti'
 
         return Response(
             {
-                'message':        f'{payment_label} payment confirmed! Your order is now being processed.',
-                'order_id':       order.id,
+                'message': f'{payment_label} payment confirmed! Your order is now being processed.',
+                'order_id': order.id,
                 'payment_status': order.payment_status,
-                'order_status':   order.status,
+                'order_status': order.status,
                 'transaction_id': order.payment_transaction_id,
-                'paid_at':        order.paid_at,
+                'paid_at': order.paid_at,
             },
             status=status.HTTP_200_OK
         )
+
+
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from tenants.mixins import TenantViewMixin
@@ -745,20 +762,15 @@ class VendorOrderViewSet(TenantViewMixin, viewsets.ReadOnlyModelViewSet):
             "status": order.status
         })
 
-class InvoiceDownloadAPIView(APIView):
 
+class InvoiceDownloadAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
-
         invoice = Invoice.objects.get(pk=pk)
-
         pdf = InvoicePDFGenerator.generate(invoice)
-
         return FileResponse(
             pdf,
             as_attachment=True,
             filename=f"{invoice.invoice_number}.pdf"
         )
-
-    

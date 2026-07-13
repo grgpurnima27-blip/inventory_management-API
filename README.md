@@ -710,3 +710,47 @@ flowchart TD
     E --> F
     F --> G
 ```
+
+
+
+# 📦 Smart Warehouse Allocation & Automatic Invoice Generation
+
+## Overview
+
+Implemented a smart warehouse allocation system that automatically selects the nearest warehouse with sufficient stock using the Haversine Distance Algorithm. After successful order creation, inventory is updated, and an invoice is generated automatically.
+
+## Workflow
+
+1. Customer places an order with delivery coordinates.
+2. `OrderViewSet.create()` validates the request.
+3. `allocate_warehouse()` selects the nearest warehouse with available inventory.
+4. `haversine_distance()` calculates the shortest distance.
+5. Warehouse inventory is reduced.
+6. `Order` and `OrderItem` are created.
+7. `InvoiceService.create_invoice(order)` generates the invoice automatically.
+8. Invoice PDF can be downloaded via `InvoiceDownloadAPIView`.
+
+## Key Components
+
+- **Order Creation:** `orders/views.py`
+- **Warehouse Allocation:** `inventory/services/warehouse_allocator.py`
+- **Distance Calculation:** `warehouses/services/distance.py`
+- **Invoice Service:** `orders/services.py`
+- **Invoice Model:** `orders/models.py`
+- **PDF Generator:** `orders/pdf_generator.py`
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Customer --> OrderAPI
+    OrderAPI --> AllocateWarehouse
+    AllocateWarehouse --> HaversineDistance
+    HaversineDistance --> NearestWarehouse
+    NearestWarehouse --> UpdateInventory
+    UpdateInventory --> CreateOrder
+    CreateOrder --> CreateOrderItems
+    CreateOrder --> InvoiceService
+    InvoiceService --> Invoice
+    Invoice --> PDFDownload
+```

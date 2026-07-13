@@ -2,6 +2,7 @@ from .models import Invoice
 from .utils import generate_invoice_number
 
 
+
 class InvoiceService:
 
     @staticmethod

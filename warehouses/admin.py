@@ -10,13 +10,20 @@ class WarehouseAdmin(admin.ModelAdmin):
         'id',
         'name',
         'location',
+        "latitude",
+        'longitude',
+        'created_at',
+        "updated_at",
     ]
 
     search_fields = [
         'name',
         'location',
+        'city',
+        'tenant__name',
     ]
 
     ordering = [
         'name',
     ]
+    list_per_page = 20
