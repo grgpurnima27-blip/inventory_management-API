@@ -103,5 +103,6 @@ urlpatterns = [
         name='swagger-ui'
     ),
     path('api/notifications/', include('notifications.urls')),
+	path("api/", include("contact.urls")),
 
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

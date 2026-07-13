@@ -133,6 +133,9 @@ else:
     EMAIL_USE_TLS = True
     EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
     EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
+
+    SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", EMAIL_HOST_USER)
+    DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 # Frontend/Backend URL for email links
 FRONTEND_URL = os.getenv(
     'FRONTEND_URL',
@@ -173,6 +176,7 @@ INSTALLED_APPS = [
     "notifications",
     "cart",
     "payment",
+    "contact",
 ]
 
 # MIDDLEWARE list of middleware components (process requests/responses in order)
