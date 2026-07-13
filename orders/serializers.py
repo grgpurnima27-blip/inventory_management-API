@@ -11,18 +11,9 @@ import uuid
 
 class OrderItemSerializer(serializers.ModelSerializer):
 
-    product_name   = serializers.CharField(
-        source='product.name',
-        read_only=True
-    )
-    warehouse_name = serializers.CharField(
-        source='warehouse.name',
-        read_only=True
-    )
-    warehouse_city = serializers.CharField(
-        source='warehouse.city',
-        read_only=True
-    )
+    product_name   = serializers.CharField(source='product.name', read_only=True)
+    warehouse_name = serializers.CharField(source='warehouse.name', read_only=True)
+    warehouse_city = serializers.CharField(source='warehouse.city', read_only=True)
 
     class Meta:
         model  = OrderItem
@@ -39,24 +30,8 @@ class OrderItemSerializer(serializers.ModelSerializer):
 
 
 class OrderCustomerSerializer(serializers.ModelSerializer):
-    """
-    Customer serializer:
-    - Can see their own order
-    - Cannot edit status or payment_status
-    """
-
     items = OrderItemSerializer(many=True, read_only=True)
     user  = serializers.StringRelatedField(read_only=True)
-
-    original_amount = serializers.DecimalField(
-        max_digits=12, decimal_places=2, read_only=True
-    )
-    discount_amount = serializers.DecimalField(
-        max_digits=12, decimal_places=2, read_only=True
-    )
-    total_price = serializers.DecimalField(
-        max_digits=12, decimal_places=2, read_only=True
-    )
 
     class Meta:
         model  = Order
@@ -64,7 +39,6 @@ class OrderCustomerSerializer(serializers.ModelSerializer):
             'id',
             'user',
             'customer_name',
-            'delivery_address',      # Added
             'delivery_city',
             'status',
             'payment_method',
@@ -97,32 +71,11 @@ class OrderCustomerSerializer(serializers.ModelSerializer):
             'paid_at',
             'created_at',
         ]
-        # Add extra_kwargs to make fields optional with defaults
-        extra_kwargs = {
-            'delivery_address': {'required': False, 'allow_blank': True, 'default': ''},
-            'delivery_city': {'required': False, 'allow_blank': True, 'default': 'Kathmandu'},
-        }
 
 
 class OrderAdminSerializer(serializers.ModelSerializer):
-    """
-    Admin serializer:
-    - Sees everything including updated_at
-    - Can update status and payment_status
-    """
-
     items = OrderItemSerializer(many=True, read_only=True)
     user  = serializers.StringRelatedField(read_only=True)
-
-    original_amount = serializers.DecimalField(
-        max_digits=12, decimal_places=2, read_only=True
-    )
-    discount_amount = serializers.DecimalField(
-        max_digits=12, decimal_places=2, read_only=True
-    )
-    total_price = serializers.DecimalField(
-        max_digits=12, decimal_places=2, read_only=True
-    )
 
     class Meta:
         model  = Order
@@ -130,7 +83,6 @@ class OrderAdminSerializer(serializers.ModelSerializer):
             'id',
             'user',
             'customer_name',
-            'delivery_address',      # Added
             'delivery_city',
             'status',
             'payment_method',
@@ -163,86 +115,12 @@ class OrderAdminSerializer(serializers.ModelSerializer):
             'created_at',
             'updated_at',
         ]
-        # Add extra_kwargs to make fields optional with defaults
-        extra_kwargs = {
-            'delivery_address': {'required': False, 'allow_blank': True, 'default': ''},
-            'delivery_city': {'required': False, 'allow_blank': True, 'default': 'Kathmandu'},
-        }
 
-    def validate_status(self, value):
-        order = self.instance
-        if not order:
-            return value
-
-        valid_transitions = {
-            Order.STATUS_PENDING:    [Order.STATUS_PROCESSING, Order.STATUS_CANCELLED],
-            Order.STATUS_PROCESSING: [Order.STATUS_SHIPPED,    Order.STATUS_CANCELLED],
-            Order.STATUS_SHIPPED:    [Order.STATUS_COMPLETED],
-            Order.STATUS_COMPLETED:  [],
-            Order.STATUS_CANCELLED:  [],
-        }
-
-        allowed = valid_transitions.get(order.status, [])
-        if value not in allowed:
-            raise serializers.ValidationError(
-                f'Cannot move from "{order.status}" to "{value}". '
-                f'Allowed transitions: {allowed}'
-            )
-        return value
-
-    def validate_payment_status(self, value):
-        order = self.instance
-        if not order:
-            return value
-        if (
-            order.payment_status == Order.PAYMENT_STATUS_PAID and
-            value != Order.PAYMENT_STATUS_PAID
-        ):
-            raise serializers.ValidationError(
-                'Cannot change payment status once it is "paid".'
-            )
-        return value
-
-    def update(self, instance, validated_data):
-        from django.utils import timezone
-
-        new_status         = validated_data.get('status')
-        new_payment_status = validated_data.get('payment_status')
-
-        if new_status:
-            timestamp_map = {
-                Order.STATUS_PROCESSING: 'processed_at',
-                Order.STATUS_SHIPPED:    'shipped_at',
-                Order.STATUS_COMPLETED:  'completed_at',
-                Order.STATUS_CANCELLED:  'cancelled_at',
-            }
-            timestamp_field = timestamp_map.get(new_status)
-            if timestamp_field:
-                setattr(instance, timestamp_field, timezone.now())
-            instance.status = new_status
-
-        if new_payment_status:
-            if (
-                new_payment_status == Order.PAYMENT_STATUS_PAID and
-                instance.payment_status != Order.PAYMENT_STATUS_PAID
-            ):
-                instance.paid_at = timezone.now()
-            instance.payment_status = new_payment_status
-
-        instance.save()
-        return instance
-    
-
-# Default serializer alias
-OrderSerializer = OrderCustomerSerializer
 
 class InvoiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Invoice
         fields = "__all__"
-
-
-
 
 
 class OrderCreateItemSerializer(serializers.Serializer):
@@ -251,20 +129,32 @@ class OrderCreateItemSerializer(serializers.Serializer):
 
 
 class OrderCreateSerializer(serializers.Serializer):
-
+    """
+    Serializer for creating orders with COD, eSewa, and Khalti payment methods.
+    """
     customer_name = serializers.CharField()
-    delivery_city = serializers.CharField()
-
-    delivery_address = serializers.CharField()
-
-    delivery_latitude = serializers.FloatField()
-
-    delivery_longitude = serializers.FloatField()
+    delivery_city = serializers.CharField(required=False, allow_blank=True)
     payment_method = serializers.ChoiceField(
-        choices=Order.PAYMENT_METHOD_CHOICES
+        choices=Order.PAYMENT_METHOD_CHOICES,
+        default=Order.PAYMENT_METHOD_COD
     )
-
     items = OrderCreateItemSerializer(many=True)
+
+    def validate(self, data):
+        request = self.context.get("request")
+        
+        # Handle delivery city
+        delivery_city = data.get("delivery_city", "").strip()
+        if not delivery_city and request:
+            try:
+                if hasattr(request.user, 'profile') and hasattr(request.user.profile, 'city'):
+                    delivery_city = request.user.profile.city or ""
+            except Exception:
+                delivery_city = ""
+        
+        data['delivery_city'] = delivery_city
+        
+        return data
 
     @transaction.atomic
     def create(self, validated_data):
@@ -278,11 +168,12 @@ class OrderCreateSerializer(serializers.Serializer):
             tenant=tenant,
             user=user,
             customer_name=validated_data["customer_name"],
-            delivery_city=validated_data["delivery_city"],
-            delivery_address=validated_data["delivery_address"],
-            delivery_latitude=validated_data["delivery_latitude"],
-            delivery_longitude=validated_data["delivery_longitude"],
-            payment_method=validated_data["payment_method"],
+            delivery_city=validated_data.get("delivery_city", "Kathmandu"),
+            payment_method=validated_data.get("payment_method", Order.PAYMENT_METHOD_COD),
+            original_amount=Decimal("0.00"),
+            total_price=Decimal("0.00"),
+            status=Order.STATUS_PENDING,
+            payment_status=Order.PAYMENT_STATUS_PENDING,
         )
 
         total_price = Decimal("0.00")
@@ -297,12 +188,13 @@ class OrderCreateSerializer(serializers.Serializer):
             subtotal = product.price * quantity
             total_price += subtotal
 
+            # Allocate warehouse without coordinates
             allocation = allocate_warehouse(
                 tenant=tenant,
                 product=product,
                 quantity=quantity,
-                customer_latitude=validated_data["delivery_latitude"],
-                customer_longitude=validated_data["delivery_longitude"],
+                customer_latitude=None,
+                customer_longitude=None,
             )
 
             if allocation is None:
@@ -321,25 +213,28 @@ class OrderCreateSerializer(serializers.Serializer):
                 unit_price=product.price,
             )
 
+            # Update inventory
             inventory.quantity -= quantity
             inventory.save()
 
+            # Update product quantity if it exists
             if hasattr(product, "quantity"):
                 product.quantity -= quantity
                 product.save()
 
+        # Set order totals
         order.original_amount = total_price
         order.total_price = total_price
         order.save()
 
-
-        print("Creating invoice...")
-
-        invoice = Invoice.objects.create(
+        # Create invoice
+        Invoice.objects.create(
             order=order,
             invoice_number=f"INV-{uuid.uuid4().hex[:8].upper()}",
         )
 
-        print("Invoice created:", invoice.id)
-
         return order
+
+
+# Default serializer alias
+OrderSerializer = OrderCustomerSerializer

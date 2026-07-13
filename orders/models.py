@@ -63,30 +63,9 @@ class Order(models.Model):
 
     customer_name = models.CharField(max_length=255)
 
-    # ========== FIX: ADD delivery_address field ==========
-    delivery_address = models.TextField(
-        null=True,      # Allow NULL in database
-        blank=True,     # Allow empty in forms
-        default=''      # Default empty string
-    )
-    # =====================================================
-
     delivery_city = models.CharField(
         max_length=100,
         default='Kathmandu'
-    )
-
-
-    delivery_address = models.TextField(blank=True)
-
-    delivery_latitude = models.FloatField(
-        null=True,
-        blank=True
-    )
-
-    delivery_longitude = models.FloatField(
-        null=True,
-        blank=True
     )
 
     status = models.CharField(
@@ -94,7 +73,6 @@ class Order(models.Model):
         choices=STATUS_CHOICES,
         default=STATUS_PENDING
     )
-
 
     payment_method = models.CharField(
         max_length=10,
@@ -150,15 +128,13 @@ class Order(models.Model):
 
     def clean(self):
         errors = {}
-        if len(self.customer_name.strip()) < 3:
-            errors['customer_name'] = (
-                'Customer name must contain at least 3 characters.'
-            )
-        if len(self.delivery_city.strip()) < 2:
+        
+        if self.customer_name and len(self.customer_name.strip()) < 3:
+            errors['customer_name'] = 'Customer name must contain at least 3 characters.'
+        
+        if self.delivery_city and len(self.delivery_city.strip()) < 2:
             errors['delivery_city'] = 'Delivery city is invalid.'
-        # Optional: Validate delivery_address if you want
-        if self.delivery_address and len(self.delivery_address.strip()) < 5:
-            errors['delivery_address'] = 'Delivery address must be at least 5 characters long.'
+        
         if errors:
             raise ValidationError(errors)
 
@@ -167,12 +143,7 @@ class Order(models.Model):
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return (
-            f'Order #{self.id} - '
-            f'{self.customer_name} - '
-            f'{self.status} - '
-            f'{self.payment_method}'
-        )
+        return f'Order #{self.id} - {self.customer_name} - {self.status} - {self.payment_method}'
 
 
 class OrderItem(models.Model):
@@ -202,20 +173,14 @@ class OrderItem(models.Model):
 
     def clean(self):
         if self.quantity <= 0:
-            raise ValidationError({
-                'quantity': 'Quantity must be greater than zero.'
-            })
+            raise ValidationError({'quantity': 'Quantity must be greater than zero.'})
 
     def save(self, *args, **kwargs):
         self.full_clean()
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return (
-            f'Order #{self.order.id} - '
-            f'{self.product.name} x '
-            f'{self.quantity}'
-        )
+        return f'Order #{self.order.id} - {self.product.name} x {self.quantity}'
 
 
 class Invoice(models.Model):

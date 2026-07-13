@@ -61,7 +61,6 @@ class Product(models.Model):
         ]
 
     def clean(self):
-
         errors = {}
 
         if len(self.name.strip()) < 3:
