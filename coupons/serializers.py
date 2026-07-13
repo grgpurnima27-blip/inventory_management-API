@@ -20,7 +20,52 @@ class CouponSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'used_count', 'created_at']
 
+class ValidateCouponSerializer(serializers.Serializer):
 
+    code = serializers.CharField()
+
+    order_amount = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2
+    )
+
+    def validate(self, data):
+
+        code = data["code"].upper()
+        order_amount = data["order_amount"]
+        tenant = getattr(self.context.get("request"), "tenant", None)
+
+        try:
+            queryset = Coupon.objects.filter(code=code)
+
+            if tenant:
+                queryset = queryset.filter(tenant=tenant)
+
+            coupon = queryset.get()
+
+        except Coupon.DoesNotExist:
+            raise serializers.ValidationError(
+                {"code": "Coupon code not found."}
+            )
+
+        valid, message = coupon.is_valid()
+
+        if not valid:
+            raise serializers.ValidationError(
+                {"code": message}
+            )
+
+        if order_amount < coupon.minimum_order_amount:
+            raise serializers.ValidationError(
+                {
+                    "code": f"Minimum order amount is NPR {coupon.minimum_order_amount}."
+                }
+            )
+
+        data["coupon"] = coupon
+
+        return data
+    
 class ApplyCouponSerializer(serializers.Serializer):
 
     code = serializers.CharField(
