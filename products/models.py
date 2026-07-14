@@ -42,6 +42,7 @@ class Product(models.Model):
         blank=True,
         folder='products/',
     )
+    requires_prescription = models.BooleanField(default=False)
     
     created_at = models.DateTimeField(
         auto_now_add=True
@@ -61,7 +62,6 @@ class Product(models.Model):
         ]
 
     def clean(self):
-
         errors = {}
 
         if len(self.name.strip()) < 3:

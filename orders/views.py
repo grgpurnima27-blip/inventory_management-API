@@ -5,10 +5,12 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter
 from django.db import transaction
 from django.utils import timezone
 from django.core.exceptions import ValidationError
+from django.shortcuts import get_object_or_404
 
 from rest_framework import status, viewsets, serializers
 from rest_framework.decorators import APIView, APIView, action
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
 
@@ -26,11 +28,16 @@ from .pdf_generator import InvoicePDFGenerator
 
 from inventory.services.warehouse_allocator import allocate_warehouse
 
-from .models import Invoice, Invoice, Order, OrderItem
+from .models import Invoice, Invoice, Order, OrderItem, OrderPrescription
 from .serializers import (
     OrderSerializer,
     OrderCustomerSerializer,
     OrderAdminSerializer,
+    PrescriptionUploadSerializer,
+    PrescriptionReviewSerializer,
+    PrescriptionDetailSerializer,
+    OrderPrescriptionStatusSerializer,
+    get_order_prescription_status,
 )
 
 from rest_framework import generics
@@ -39,9 +46,7 @@ from .serializers import OrderCreateSerializer
 
 
 class OrderCreateAPIView(generics.CreateAPIView):
-
     serializer_class = OrderCreateSerializer
-
     queryset = Order.objects.all()
 
     def get_serializer_context(self):
@@ -51,26 +56,25 @@ class OrderCreateAPIView(generics.CreateAPIView):
 
 
 # Inline serializers for Swagger docs 
-
 class OrderItemCreateSerializer(serializers.Serializer):
     product  = serializers.IntegerField(help_text='Product ID')
     quantity = serializers.IntegerField(help_text='Quantity', min_value=1)
 
 
-# UPDATED: added khalti to choices; delivery_city auto-filled from profile
+# UPDATED: Removed delivery fields
 class OrderCreateSerializer(serializers.Serializer):
-    customer_name  = serializers.CharField(help_text='Customer full name')
+    customer_name = serializers.CharField(help_text='Customer full name')
     payment_method = serializers.ChoiceField(
         choices=['esewa', 'khalti', 'cod'],
         default='cod',
         help_text='esewa, khalti or cod'
     )
+    delivery_city = serializers.CharField(required=False, help_text='Delivery city')
     items = OrderItemCreateSerializer(many=True)
 
 
 class ConfirmPaymentSerializer(serializers.Serializer):
     transaction_id = serializers.CharField(
-        # mentions both eSewa and Khalti
         help_text='Transaction ID from eSewa or Khalti app after payment.'
     )
 
@@ -94,22 +98,19 @@ class AdminUpdateOrderSerializer(serializers.Serializer):
     )
 
 
-# ###ViewSet 
-
 class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
-
     permission_classes = [IsAuthenticatedCustomer]
 
     queryset = Order.objects.select_related('user').prefetch_related(
         'items',
         'items__product',
-        'items__warehou' \
-        'se',
+        'items__warehouse',
+        'prescription',  # Add prescription relation
+        'prescription__reviewed_by',  # Add reviewer relation
     )
 
-
     def get_queryset(self):
-        qs = super().get_queryset()  # applies TenantViewMixin tenant filter
+        qs = super().get_queryset()
         user = self.request.user
         if getattr(user, 'role', None) == 'admin':
             return qs
@@ -120,18 +121,18 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             return OrderAdminSerializer
         return OrderCustomerSerializer
 
-    # Create Order 
-
     @extend_schema(
         summary='Create Order',
-        ##### description now mentions Khalti
         description=(
             'Create a new order.\n\n'
             '**COD**: Pay on delivery — no extra steps.\n\n'
             '**eSewa**: Pay on eSewa app then call '
             '`/confirm-payment/` with your transaction ID.\n\n'
-            '**Khalti**: Pay on Khalti app then call '       #  NEW
-            '`/confirm-payment/` with your transaction ID.'  # NEW
+            '**Khalti**: Pay on Khalti app then call '
+            '`/confirm-payment/` with your transaction ID.\n\n'
+            '**Prescription**: If any product requires prescription, '
+            'the response will include `requires_prescription: true`. '
+            'You must then upload the prescription using `/upload-prescription/`.'
         ),
         request=OrderCreateSerializer,
         responses={
@@ -143,9 +144,9 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             OpenApiExample(
                 'COD Order',
                 value={
-                    'customer_name':  'Purnima',
+                    'customer_name': 'Purnima',
                     'payment_method': 'cod',
-                    'delivery_city':'pokhara',
+                    'delivery_city': 'pokhara',
                     'items': [
                         {'product': 1, 'quantity': 2},
                         {'product': 3, 'quantity': 1}
@@ -156,9 +157,9 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             OpenApiExample(
                 'eSewa Order',
                 value={
-                    'customer_name':  'Purnima',
+                    'customer_name': 'Purnima',
                     'payment_method': 'esewa',
-                    'delivery_city':'pokhara',
+                    'delivery_city': 'kathmandu',
                     'items': [{'product': 2, 'quantity': 1}]
                 },
                 request_only=True,
@@ -166,23 +167,15 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             OpenApiExample(
                 'Khalti Order',
                 value={
-                    'customer_name':  'Purnima',
+                    'customer_name': 'Purnima',
                     'payment_method': 'khalti',
-                    'delivery_city':'pokhara',
+                    'delivery_city': 'lalitpur',
                     'items': [{'product': 4, 'quantity': 3}]
                 },
                 request_only=True,
             ),
         ]
     )
-#     @extend_schema(
-#     parameters=[
-#         OpenApiParameter(
-#             name="X-Tenant-Slug",
-#             type=str,
-#             location=OpenApiParameter.HEADER,
-#             required=True,
-#             description="Vendor tenant slug. Example: glow-beauty-store-123",
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         data = request.data
@@ -211,6 +204,7 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Handle delivery city
         delivery_city = data.get("delivery_city", "").strip()
         if not delivery_city:
             try:
@@ -260,21 +254,21 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                     {"error": f"Product with id {product_id} does not exist."},
                     status=status.HTTP_400_BAD_REQUEST
                 )
+
+            # Allocate warehouse without coordinates
             allocation = allocate_warehouse(
                 tenant=product.tenant,
                 product=product,
                 quantity=quantity,
-                customer_latitude=float(data["delivery_latitude"]),
-                customer_longitude=float(data["delivery_longitude"]),
+                customer_latitude=None,
+                customer_longitude=None,
             )
 
             if allocation is None:
                 return Response(
-                    {
-                        "error": f'No warehouse has enough stock for "{product.name}".'
-                    },
+                    {"error": f'No warehouse has enough stock for "{product.name}".'},
                     status=status.HTTP_400_BAD_REQUEST
-            )
+                )
 
             inventory = allocation["inventory"]
             warehouse = allocation["warehouse"]
@@ -319,22 +313,17 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
 
             try:
                 order = Order.objects.create(
-                tenant=group["tenant"],
-                user=request.user,
-                customer_name=data.get("customer_name"),
-                delivery_city=delivery_city,
-
-                delivery_address=data.get("delivery_address"),
-                delivery_latitude=data.get("delivery_latitude"),
-                delivery_longitude=data.get("delivery_longitude"),
-
-                payment_method=payment_method,
-                original_amount=original_amount,
-                discount_amount=discount_amount,
-                total_price=total_price,
-                status=Order.STATUS_PENDING,
-                payment_status=Order.PAYMENT_STATUS_PENDING,
-  )
+                    tenant=group["tenant"],
+                    user=request.user,
+                    customer_name=data.get("customer_name"),
+                    delivery_city=delivery_city,
+                    payment_method=payment_method,
+                    original_amount=original_amount,
+                    discount_amount=discount_amount,
+                    total_price=total_price,
+                    status=Order.STATUS_PENDING,
+                    payment_status=Order.PAYMENT_STATUS_PENDING,
+                )
             except ValidationError as e:
                 error_msg = e.message_dict if hasattr(e, "message_dict") else str(e)
                 return Response(
@@ -364,13 +353,17 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
 
             created_orders.append(order)
 
+        # Serialize response with prescription fields
+        serializer = OrderCustomerSerializer(created_orders, many=True)
+        
         return Response(
             {
                 "message": "Orders created successfully.",
-                "orders": OrderCustomerSerializer(created_orders, many=True).data,
+                "orders": serializer.data,
             },
             status=status.HTTP_201_CREATED
-    )
+        )
+
     def update(self, request, *args, **kwargs):
         if request.user.role != 'admin':
             return Response(
@@ -378,8 +371,8 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        order              = self.get_object()
-        new_status         = request.data.get('status')
+        order = self.get_object()
+        new_status = request.data.get('status')
         new_payment_status = request.data.get('payment_status')
 
         if new_status:
@@ -393,40 +386,28 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             allowed = valid_transitions.get(order.status, [])
             if new_status not in allowed:
                 return Response(
-                    {
-                        'error': (
-                            f'Cannot move from "{order.status}" to "{new_status}". '
-                            f'Allowed: {allowed}'
-                        )
-                    },
+                    {'error': f'Cannot move from "{order.status}" to "{new_status}". Allowed: {allowed}'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
             timestamp_map = {
                 Order.STATUS_PROCESSING: 'processed_at',
-                Order.STATUS_SHIPPED:    'shipped_at',
-                Order.STATUS_COMPLETED:  'completed_at',
-                Order.STATUS_CANCELLED:  'cancelled_at',
+                Order.STATUS_SHIPPED: 'shipped_at',
+                Order.STATUS_COMPLETED: 'completed_at',
+                Order.STATUS_CANCELLED: 'cancelled_at',
             }
             timestamp_field = timestamp_map.get(new_status)
             if timestamp_field:
                 setattr(order, timestamp_field, timezone.now())
             order.status = new_status
 
-        ##### UPDATED: uses constants instead of raw strings
         if new_payment_status:
-            if (
-                order.payment_status == Order.PAYMENT_STATUS_PAID and  
-                new_payment_status != Order.PAYMENT_STATUS_PAID        
-            ):
+            if order.payment_status == Order.PAYMENT_STATUS_PAID and new_payment_status != Order.PAYMENT_STATUS_PAID:
                 return Response(
                     {'error': 'Cannot change payment status once it is "paid".'},
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            if (
-                new_payment_status == Order.PAYMENT_STATUS_PAID and   
-                order.payment_status != Order.PAYMENT_STATUS_PAID      
-            ):
+            if new_payment_status == Order.PAYMENT_STATUS_PAID and order.payment_status != Order.PAYMENT_STATUS_PAID:
                 order.paid_at = timezone.now()
             order.payment_status = new_payment_status
 
@@ -440,8 +421,6 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
     def partial_update(self, request, *args, **kwargs):
         return self.update(request, *args, **kwargs)
 
-    #### Delete Order (Admin) 
-
     def destroy(self, request, *args, **kwargs):
         if request.user.role != 'admin':
             return Response(
@@ -449,8 +428,6 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
         return super().destroy(request, *args, **kwargs)
-
-    # ##Cancel Order 
 
     @extend_schema(
         summary='Cancel Order',
@@ -485,7 +462,6 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # ## NEW: added check for completed orders
         if order.status == Order.STATUS_COMPLETED:
             return Response(
                 {'error': 'Cannot cancel a completed order.'},
@@ -500,7 +476,7 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             inventory.quantity += item.quantity
             inventory.save()
 
-        order.status       = Order.STATUS_CANCELLED
+        order.status = Order.STATUS_CANCELLED
         order.cancelled_at = timezone.now()
         order.save()
 
@@ -508,8 +484,6 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             {'message': 'Order cancelled successfully. Inventory restored.'},
             status=status.HTTP_200_OK
         )
-
-    # Track Order 
 
     @extend_schema(
         summary='Track Order',
@@ -533,59 +507,53 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             )
 
         timeline = [{
-            'stage':     'Order Placed',
-            'status':    'completed',
+            'stage': 'Order Placed',
+            'status': 'completed',
             'timestamp': order.created_at
         }]
 
         stages = [
             ('processing', 'Processing', order.processed_at),
-            ('shipped',    'Shipped',    order.shipped_at),
-            ('completed',  'Delivered',  order.completed_at),
-            ('cancelled',  'Cancelled',  order.cancelled_at),
+            ('shipped', 'Shipped', order.shipped_at),
+            ('completed', 'Delivered', order.completed_at),
+            ('cancelled', 'Cancelled', order.cancelled_at),
         ]
 
         for stage_key, stage_label, timestamp in stages:
             if timestamp:
                 timeline.append({
-                    'stage':     stage_label,
-                    'status':    'completed',
+                    'stage': stage_label,
+                    'status': 'completed',
                     'timestamp': timestamp
                 })
-            elif order.status not in [
-                Order.STATUS_CANCELLED,
-                Order.STATUS_COMPLETED,
-            ]:
+            elif order.status not in [Order.STATUS_CANCELLED, Order.STATUS_COMPLETED]:
                 if stage_key != 'cancelled':
                     timeline.append({
-                        'stage':     stage_label,
-                        'status':    'pending',
+                        'stage': stage_label,
+                        'status': 'pending',
                         'timestamp': None
                     })
 
         return Response(
             {
-                'order_id':       order.id,
-                'customer_name':  order.customer_name,
+                'order_id': order.id,
+                'customer_name': order.customer_name,
                 'current_status': order.status,
-                'delivery_city':  order.delivery_city,
-                'total_price':    str(order.total_price),
+                'delivery_city': order.delivery_city,
+                'total_price': str(order.total_price),
                 'payment_method': order.payment_method,
                 'payment_status': order.payment_status,
-                'timeline':       timeline,
+                'timeline': timeline,
             },
             status=status.HTTP_200_OK
         )
 
-    # Confirm Payment (eSewa / Khalti) 
-
     @extend_schema(
-        #UPDATED: title mentions both eSewa and Khalti
         summary='Confirm eSewa / Khalti Payment',
         description=(
             'After paying on eSewa or Khalti app, '
             'submit your transaction ID to confirm payment.\n\n'
-            'Not needed for COD orders.'  
+            'Not needed for COD orders.'
         ),
         request=ConfirmPaymentSerializer,
         responses={
@@ -600,7 +568,6 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 value={'transaction_id': 'ESEWA-TXN-123456789'},
                 request_only=True,
             ),
-            # NEW: added Khalti 
             OpenApiExample(
                 'Confirm Khalti Payment',
                 value={'transaction_id': 'KHALTI-TXN-987654321'},
@@ -623,15 +590,12 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        #  UPDATED: now checks COD instead of eSewa
-        # (allows both eSewa and Khalti to confirm)
         if order.payment_method == Order.PAYMENT_METHOD_COD:
             return Response(
                 {'error': 'This order uses Cash on Delivery. No payment confirmation needed.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # UPDATED: uses constant
         if order.payment_status == Order.PAYMENT_STATUS_PAID:
             return Response(
                 {'error': 'Payment already confirmed for this order.'},
@@ -651,46 +615,365 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if Order.objects.filter(
-            payment_transaction_id=transaction_id
-        ).exclude(id=order.id).exists():
+        if Order.objects.filter(payment_transaction_id=transaction_id).exclude(id=order.id).exists():
             return Response(
                 {'error': 'This transaction ID has already been used.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # UPDATED: uses constants
-        order.payment_status         = Order.PAYMENT_STATUS_PAID
+        order.payment_status = Order.PAYMENT_STATUS_PAID
         order.payment_transaction_id = transaction_id
-        order.paid_at                = timezone.now()
+        order.paid_at = timezone.now()
 
         if order.status == Order.STATUS_PENDING:
-            order.status       = Order.STATUS_PROCESSING
+            order.status = Order.STATUS_PROCESSING
             order.processed_at = timezone.now()
 
         order.save()
 
-        #UPDATED: shows correct payment label for eSewa or Khalti
-        payment_label = (
-            'eSewa'
-            if order.payment_method == Order.PAYMENT_METHOD_ESEWA
-            else 'Khalti'
-        )
+        payment_label = 'eSewa' if order.payment_method == Order.PAYMENT_METHOD_ESEWA else 'Khalti'
 
         return Response(
             {
-                'message':        f'{payment_label} payment confirmed! Your order is now being processed.',
-                'order_id':       order.id,
+                'message': f'{payment_label} payment confirmed! Your order is now being processed.',
+                'order_id': order.id,
                 'payment_status': order.payment_status,
-                'order_status':   order.status,
+                'order_status': order.status,
                 'transaction_id': order.payment_transaction_id,
-                'paid_at':        order.paid_at,
+                'paid_at': order.paid_at,
             },
             status=status.HTTP_200_OK
         )
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.decorators import action
-from tenants.mixins import TenantViewMixin
+
+    # ==================== PRESCRIPTION ENDPOINTS ====================
+
+    @extend_schema(
+        summary='Upload Prescription',
+        description=(
+            'Upload a prescription image for an order that requires a prescription.\n\n'
+            '**Requirements:**\n'
+            '- Only the order owner or admin can upload\n'
+            '- Image must be in JPEG, PNG, or GIF format\n'
+            '- Image size must not exceed 5MB\n'
+            '- Only one prescription per order is allowed\n'
+            '- Order must be in pending or processing status'
+        ),
+        request={
+            'multipart/form-data': {
+                'type': 'object',
+                'properties': {
+                    'image': {
+                        'type': 'string',
+                        'format': 'binary',
+                        'description': 'Prescription image file (JPEG, PNG, GIF)'
+                    }
+                },
+                'required': ['image']
+            }
+        },
+        responses={
+            201: OpenApiResponse(
+                description='Prescription uploaded successfully.',
+                response=PrescriptionDetailSerializer
+            ),
+            400: OpenApiResponse(description='Invalid data.'),
+            403: OpenApiResponse(description='Permission denied.'),
+            404: OpenApiResponse(description='Order not found.'),
+        },
+        tags=['Prescriptions']
+    )
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='upload-prescription',
+        permission_classes=[IsAuthenticated]
+    )
+    def upload_prescription(self, request, pk=None):
+        """
+        Upload a prescription for an order.
+        """
+        order = self.get_object()
+        user = request.user
+
+        # Check permission: order owner or admin
+        if not (user == order.user or getattr(user, 'role', None) == 'admin'):
+            return Response(
+                {"error": "You don't have permission to upload a prescription for this order."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Check if order requires prescription
+        requires_prescription = order.items.filter(product__requires_prescription=True).exists()
+        if not requires_prescription:
+            return Response(
+                {"error": "This order does not require a prescription."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if prescription already exists
+        if hasattr(order, 'prescription'):
+            return Response(
+                {"error": f"Prescription already uploaded. Status: {order.prescription.status}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if order can accept prescription (not shipped/completed/cancelled)
+        if order.status in [Order.STATUS_SHIPPED, Order.STATUS_COMPLETED, Order.STATUS_CANCELLED]:
+            return Response(
+                {"error": f"Cannot upload prescription for order with status: {order.status}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate and upload prescription
+        serializer = PrescriptionUploadSerializer(data=request.data)
+        if serializer.is_valid():
+            prescription = OrderPrescription.objects.create(
+                order=order,
+                image=serializer.validated_data['image']
+            )
+            
+            # Refresh order to include prescription
+            order.refresh_from_db()
+            
+            return Response(
+                {
+                    "message": "Prescription uploaded successfully.",
+                    "prescription": PrescriptionDetailSerializer(prescription).data,
+                    "order": OrderCustomerSerializer(order).data
+                },
+                status=status.HTTP_201_CREATED
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        summary='Review Prescription',
+        description=(
+            'Approve or reject a prescription (Admin/Vendor only).\n\n'
+            '**Requirements:**\n'
+            '- Only admins or vendors can review\n'
+            '- Prescription must be in pending status\n'
+            '- Cannot re-review an already reviewed prescription'
+        ),
+        request=PrescriptionReviewSerializer,
+        responses={
+            200: OpenApiResponse(
+                description='Prescription reviewed successfully.',
+                response=PrescriptionDetailSerializer
+            ),
+            400: OpenApiResponse(description='Invalid data.'),
+            403: OpenApiResponse(description='Permission denied.'),
+            404: OpenApiResponse(description='Order or prescription not found.'),
+        },
+        tags=['Prescriptions']
+    )
+    @action(
+        detail=True,
+        methods=['patch'],
+        url_path='review-prescription',
+        permission_classes=[IsAuthenticated]
+    )
+    def review_prescription(self, request, pk=None):
+        """
+        Review a prescription (approve or reject).
+        """
+        order = self.get_object()
+        user = request.user
+
+        # Check permission: admin or vendor
+        if not (getattr(user, 'role', None) == 'admin' or hasattr(user, 'vendor_profile')):
+            return Response(
+                {"error": "Only admins or vendors can review prescriptions."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Check if prescription exists
+        if not hasattr(order, 'prescription'):
+            return Response(
+                {"error": "No prescription found for this order."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        prescription = order.prescription
+
+        # Don't allow re-review
+        if prescription.status != OrderPrescription.Status.PENDING:
+            return Response(
+                {"error": f"Prescription already {prescription.status}."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate and review
+        serializer = PrescriptionReviewSerializer(data=request.data)
+        if serializer.is_valid():
+            status_value = serializer.validated_data['status']
+            notes = serializer.validated_data.get('notes', '')
+
+            if status_value == 'approved':
+                prescription.approve(user)
+                message = "Prescription approved successfully."
+            else:
+                prescription.reject(user)
+                message = "Prescription rejected successfully."
+
+            return Response(
+                {
+                    "message": message,
+                    "prescription": PrescriptionDetailSerializer(prescription).data,
+                    "order": OrderCustomerSerializer(order).data
+                },
+                status=status.HTTP_200_OK
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        summary='Get Prescription Status',
+        description=(
+            'Get the prescription status for an order.\n\n'
+            'Returns:\n'
+            '- Whether prescription is required\n'
+            '- Current status (pending/approved/rejected/not_uploaded)\n'
+            '- Whether the user can upload or review'
+        ),
+        responses={
+            200: OpenApiResponse(
+                description='Prescription status retrieved.',
+                response=OrderPrescriptionStatusSerializer
+            ),
+            403: OpenApiResponse(description='Permission denied.'),
+            404: OpenApiResponse(description='Order not found.'),
+        },
+        tags=['Prescriptions']
+    )
+    @action(
+        detail=True,
+        methods=['get'],
+        url_path='prescription-status',
+        permission_classes=[IsAuthenticated]
+    )
+    def prescription_status(self, request, pk=None):
+        """
+        Get prescription status for an order.
+        """
+        order = self.get_object()
+        user = request.user
+
+        # Check permission: order owner, admin, or vendor
+        if not (user == order.user or getattr(user, 'role', None) == 'admin' or hasattr(user, 'vendor_profile')):
+            return Response(
+                {"error": "You don't have permission to view this order's prescription status."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        status_data = get_order_prescription_status(order)
+        
+        # Add user permissions to response
+        status_data['can_upload'] = (
+            status_data['can_upload'] and 
+            (user == order.user or getattr(user, 'role', None) == 'admin')
+        )
+        status_data['can_review'] = (
+            status_data['can_review'] and 
+            (getattr(user, 'role', None) == 'admin' or hasattr(user, 'vendor_profile'))
+        )
+
+        return Response(status_data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Get Prescription Details',
+        description=(
+            'Get detailed prescription information including the image URL.\n\n'
+            'Only accessible to order owner, admin, or vendor.'
+        ),
+        responses={
+            200: OpenApiResponse(
+                description='Prescription details retrieved.',
+                response=PrescriptionDetailSerializer
+            ),
+            403: OpenApiResponse(description='Permission denied.'),
+            404: OpenApiResponse(description='Order or prescription not found.'),
+        },
+        tags=['Prescriptions']
+    )
+    @action(
+        detail=True,
+        methods=['get'],
+        url_path='prescription',
+        permission_classes=[IsAuthenticated]
+    )
+    def get_prescription(self, request, pk=None):
+        """
+        Get prescription details for an order.
+        """
+        order = self.get_object()
+        user = request.user
+
+        # Check permission: order owner, admin, or vendor
+        if not (user == order.user or getattr(user, 'role', None) == 'admin' or hasattr(user, 'vendor_profile')):
+            return Response(
+                {"error": "You don't have permission to view this order's prescription."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Check if prescription exists
+        if not hasattr(order, 'prescription'):
+            return Response(
+                {"error": "No prescription found for this order."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        prescription = order.prescription
+        serializer = PrescriptionDetailSerializer(prescription)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Delete Prescription',
+        description=(
+            'Delete a prescription (Admin only).\n\n'
+            'Only admins can delete prescriptions.'
+        ),
+        responses={
+            200: OpenApiResponse(description='Prescription deleted successfully.'),
+            403: OpenApiResponse(description='Permission denied.'),
+            404: OpenApiResponse(description='Order or prescription not found.'),
+        },
+        tags=['Prescriptions']
+    )
+    @action(
+        detail=True,
+        methods=['delete'],
+        url_path='prescription',
+        permission_classes=[IsAuthenticated]
+    )
+    def delete_prescription(self, request, pk=None):
+        """
+        Delete a prescription (admin only).
+        """
+        order = self.get_object()
+        user = request.user
+
+        # Only admin can delete
+        if getattr(user, 'role', None) != 'admin':
+            return Response(
+                {"error": "Only admins can delete prescriptions."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Check if prescription exists
+        if not hasattr(order, 'prescription'):
+            return Response(
+                {"error": "No prescription found for this order."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        prescription = order.prescription
+        prescription.delete()
+
+        return Response(
+            {"message": "Prescription deleted successfully."},
+            status=status.HTTP_200_OK
+        )
 
 
 class VendorOrderViewSet(TenantViewMixin, viewsets.ReadOnlyModelViewSet):
@@ -703,7 +986,9 @@ class VendorOrderViewSet(TenantViewMixin, viewsets.ReadOnlyModelViewSet):
     ).prefetch_related(
         "items",
         "items__product",
-        "items__warehouse"
+        "items__warehouse",
+        "prescription",  # Add prescription relation
+        "prescription__reviewed_by",
     )
 
     def get_queryset(self):
@@ -772,20 +1057,93 @@ class VendorOrderViewSet(TenantViewMixin, viewsets.ReadOnlyModelViewSet):
             "status": order.status
         })
 
-class InvoiceDownloadAPIView(APIView):
 
+class InvoiceDownloadAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request, pk):
-
         invoice = Invoice.objects.get(pk=pk)
-
         pdf = InvoicePDFGenerator.generate(invoice)
-
         return FileResponse(
             pdf,
             as_attachment=True,
             filename=f"{invoice.invoice_number}.pdf"
         )
 
-    
+
+# ==================== ADMIN VIEWS FOR PRESCRIPTIONS ====================
+
+from rest_framework import generics
+from .models import OrderPrescription
+from .serializers import PrescriptionDetailSerializer
+
+
+class AdminPrescriptionListView(generics.ListAPIView):
+    """
+    Admin view to list all prescriptions with filtering options.
+    """
+    permission_classes = [IsAdminRole]
+    serializer_class = PrescriptionDetailSerializer
+    queryset = OrderPrescription.objects.select_related(
+        'order',
+        'order__user',
+        'reviewed_by'
+    ).order_by('-uploaded_at')
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        
+        # Filter by status
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        # Filter by date range
+        from_date = self.request.query_params.get('from_date')
+        if from_date:
+            queryset = queryset.filter(uploaded_at__gte=from_date)
+        
+        to_date = self.request.query_params.get('to_date')
+        if to_date:
+            queryset = queryset.filter(uploaded_at__lte=to_date)
+        
+        # Filter by tenant
+        tenant = self.request.tenant
+        if tenant:
+            queryset = queryset.filter(order__tenant=tenant)
+        
+        return queryset
+
+
+class AdminPrescriptionReviewView(generics.UpdateAPIView):
+    """
+    Admin view to review a prescription.
+    """
+    permission_classes = [IsAdminRole]
+    serializer_class = PrescriptionReviewSerializer
+    queryset = OrderPrescription.objects.all()
+
+    def update(self, request, *args, **kwargs):
+        prescription = self.get_object()
+        
+        if prescription.status != OrderPrescription.Status.PENDING:
+            return Response(
+                {"error": f"Prescription already {prescription.status}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            status_value = serializer.validated_data['status']
+            
+            if status_value == 'approved':
+                prescription.approve(request.user)
+            else:
+                prescription.reject(request.user)
+            
+            return Response({
+                "message": f"Prescription {status_value} successfully",
+                "prescription": PrescriptionDetailSerializer(prescription).data
+            })
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
