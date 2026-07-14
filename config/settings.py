@@ -39,6 +39,7 @@ ALLOWED_HOSTS = [
     "192.168.18.227",
     "192.168.18.220",
     "192.168.18.224",
+    "192.168.18.221",
 ]
 
 railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN")

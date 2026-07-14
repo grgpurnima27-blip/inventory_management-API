@@ -5,10 +5,12 @@ from drf_spectacular.utils import extend_schema, OpenApiParameter
 from django.db import transaction
 from django.utils import timezone
 from django.core.exceptions import ValidationError
+from django.shortcuts import get_object_or_404
 
 from rest_framework import status, viewsets, serializers
 from rest_framework.decorators import APIView, APIView, action
 from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
 
 from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
 
@@ -26,11 +28,16 @@ from .pdf_generator import InvoicePDFGenerator
 
 from inventory.services.warehouse_allocator import allocate_warehouse
 
-from .models import Invoice, Invoice, Order, OrderItem
+from .models import Invoice, Invoice, Order, OrderItem, OrderPrescription
 from .serializers import (
     OrderSerializer,
     OrderCustomerSerializer,
     OrderAdminSerializer,
+    PrescriptionUploadSerializer,
+    PrescriptionReviewSerializer,
+    PrescriptionDetailSerializer,
+    OrderPrescriptionStatusSerializer,
+    get_order_prescription_status,
 )
 
 from rest_framework import generics
@@ -98,6 +105,8 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
         'items',
         'items__product',
         'items__warehouse',
+        'prescription',  # Add prescription relation
+        'prescription__reviewed_by',  # Add reviewer relation
     )
 
     def get_queryset(self):
@@ -120,7 +129,10 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             '**eSewa**: Pay on eSewa app then call '
             '`/confirm-payment/` with your transaction ID.\n\n'
             '**Khalti**: Pay on Khalti app then call '
-            '`/confirm-payment/` with your transaction ID.'
+            '`/confirm-payment/` with your transaction ID.\n\n'
+            '**Prescription**: If any product requires prescription, '
+            'the response will include `requires_prescription: true`. '
+            'You must then upload the prescription using `/upload-prescription/`.'
         ),
         request=OrderCreateSerializer,
         responses={
@@ -341,10 +353,13 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
 
             created_orders.append(order)
 
+        # Serialize response with prescription fields
+        serializer = OrderCustomerSerializer(created_orders, many=True)
+        
         return Response(
             {
                 "message": "Orders created successfully.",
-                "orders": OrderCustomerSerializer(created_orders, many=True).data,
+                "orders": serializer.data,
             },
             status=status.HTTP_201_CREATED
         )
@@ -630,10 +645,335 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             status=status.HTTP_200_OK
         )
 
+    # ==================== PRESCRIPTION ENDPOINTS ====================
 
-from rest_framework.permissions import IsAuthenticated
-from rest_framework.decorators import action
-from tenants.mixins import TenantViewMixin
+    @extend_schema(
+        summary='Upload Prescription',
+        description=(
+            'Upload a prescription image for an order that requires a prescription.\n\n'
+            '**Requirements:**\n'
+            '- Only the order owner or admin can upload\n'
+            '- Image must be in JPEG, PNG, or GIF format\n'
+            '- Image size must not exceed 5MB\n'
+            '- Only one prescription per order is allowed\n'
+            '- Order must be in pending or processing status'
+        ),
+        request={
+            'multipart/form-data': {
+                'type': 'object',
+                'properties': {
+                    'image': {
+                        'type': 'string',
+                        'format': 'binary',
+                        'description': 'Prescription image file (JPEG, PNG, GIF)'
+                    }
+                },
+                'required': ['image']
+            }
+        },
+        responses={
+            201: OpenApiResponse(
+                description='Prescription uploaded successfully.',
+                response=PrescriptionDetailSerializer
+            ),
+            400: OpenApiResponse(description='Invalid data.'),
+            403: OpenApiResponse(description='Permission denied.'),
+            404: OpenApiResponse(description='Order not found.'),
+        },
+        tags=['Prescriptions']
+    )
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='upload-prescription',
+        permission_classes=[IsAuthenticated]
+    )
+    def upload_prescription(self, request, pk=None):
+        """
+        Upload a prescription for an order.
+        """
+        order = self.get_object()
+        user = request.user
+
+        # Check permission: order owner or admin
+        if not (user == order.user or getattr(user, 'role', None) == 'admin'):
+            return Response(
+                {"error": "You don't have permission to upload a prescription for this order."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Check if order requires prescription
+        requires_prescription = order.items.filter(product__requires_prescription=True).exists()
+        if not requires_prescription:
+            return Response(
+                {"error": "This order does not require a prescription."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if prescription already exists
+        if hasattr(order, 'prescription'):
+            return Response(
+                {"error": f"Prescription already uploaded. Status: {order.prescription.status}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if order can accept prescription (not shipped/completed/cancelled)
+        if order.status in [Order.STATUS_SHIPPED, Order.STATUS_COMPLETED, Order.STATUS_CANCELLED]:
+            return Response(
+                {"error": f"Cannot upload prescription for order with status: {order.status}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate and upload prescription
+        serializer = PrescriptionUploadSerializer(data=request.data)
+        if serializer.is_valid():
+            prescription = OrderPrescription.objects.create(
+                order=order,
+                image=serializer.validated_data['image']
+            )
+            
+            # Refresh order to include prescription
+            order.refresh_from_db()
+            
+            return Response(
+                {
+                    "message": "Prescription uploaded successfully.",
+                    "prescription": PrescriptionDetailSerializer(prescription).data,
+                    "order": OrderCustomerSerializer(order).data
+                },
+                status=status.HTTP_201_CREATED
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        summary='Review Prescription',
+        description=(
+            'Approve or reject a prescription (Admin/Vendor only).\n\n'
+            '**Requirements:**\n'
+            '- Only admins or vendors can review\n'
+            '- Prescription must be in pending status\n'
+            '- Cannot re-review an already reviewed prescription'
+        ),
+        request=PrescriptionReviewSerializer,
+        responses={
+            200: OpenApiResponse(
+                description='Prescription reviewed successfully.',
+                response=PrescriptionDetailSerializer
+            ),
+            400: OpenApiResponse(description='Invalid data.'),
+            403: OpenApiResponse(description='Permission denied.'),
+            404: OpenApiResponse(description='Order or prescription not found.'),
+        },
+        tags=['Prescriptions']
+    )
+    @action(
+        detail=True,
+        methods=['patch'],
+        url_path='review-prescription',
+        permission_classes=[IsAuthenticated]
+    )
+    def review_prescription(self, request, pk=None):
+        """
+        Review a prescription (approve or reject).
+        """
+        order = self.get_object()
+        user = request.user
+
+        # Check permission: admin or vendor
+        if not (getattr(user, 'role', None) == 'admin' or hasattr(user, 'vendor_profile')):
+            return Response(
+                {"error": "Only admins or vendors can review prescriptions."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Check if prescription exists
+        if not hasattr(order, 'prescription'):
+            return Response(
+                {"error": "No prescription found for this order."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        prescription = order.prescription
+
+        # Don't allow re-review
+        if prescription.status != OrderPrescription.Status.PENDING:
+            return Response(
+                {"error": f"Prescription already {prescription.status}."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate and review
+        serializer = PrescriptionReviewSerializer(data=request.data)
+        if serializer.is_valid():
+            status_value = serializer.validated_data['status']
+            notes = serializer.validated_data.get('notes', '')
+
+            if status_value == 'approved':
+                prescription.approve(user)
+                message = "Prescription approved successfully."
+            else:
+                prescription.reject(user)
+                message = "Prescription rejected successfully."
+
+            return Response(
+                {
+                    "message": message,
+                    "prescription": PrescriptionDetailSerializer(prescription).data,
+                    "order": OrderCustomerSerializer(order).data
+                },
+                status=status.HTTP_200_OK
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    @extend_schema(
+        summary='Get Prescription Status',
+        description=(
+            'Get the prescription status for an order.\n\n'
+            'Returns:\n'
+            '- Whether prescription is required\n'
+            '- Current status (pending/approved/rejected/not_uploaded)\n'
+            '- Whether the user can upload or review'
+        ),
+        responses={
+            200: OpenApiResponse(
+                description='Prescription status retrieved.',
+                response=OrderPrescriptionStatusSerializer
+            ),
+            403: OpenApiResponse(description='Permission denied.'),
+            404: OpenApiResponse(description='Order not found.'),
+        },
+        tags=['Prescriptions']
+    )
+    @action(
+        detail=True,
+        methods=['get'],
+        url_path='prescription-status',
+        permission_classes=[IsAuthenticated]
+    )
+    def prescription_status(self, request, pk=None):
+        """
+        Get prescription status for an order.
+        """
+        order = self.get_object()
+        user = request.user
+
+        # Check permission: order owner, admin, or vendor
+        if not (user == order.user or getattr(user, 'role', None) == 'admin' or hasattr(user, 'vendor_profile')):
+            return Response(
+                {"error": "You don't have permission to view this order's prescription status."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        status_data = get_order_prescription_status(order)
+        
+        # Add user permissions to response
+        status_data['can_upload'] = (
+            status_data['can_upload'] and 
+            (user == order.user or getattr(user, 'role', None) == 'admin')
+        )
+        status_data['can_review'] = (
+            status_data['can_review'] and 
+            (getattr(user, 'role', None) == 'admin' or hasattr(user, 'vendor_profile'))
+        )
+
+        return Response(status_data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Get Prescription Details',
+        description=(
+            'Get detailed prescription information including the image URL.\n\n'
+            'Only accessible to order owner, admin, or vendor.'
+        ),
+        responses={
+            200: OpenApiResponse(
+                description='Prescription details retrieved.',
+                response=PrescriptionDetailSerializer
+            ),
+            403: OpenApiResponse(description='Permission denied.'),
+            404: OpenApiResponse(description='Order or prescription not found.'),
+        },
+        tags=['Prescriptions']
+    )
+    @action(
+        detail=True,
+        methods=['get'],
+        url_path='prescription',
+        permission_classes=[IsAuthenticated]
+    )
+    def get_prescription(self, request, pk=None):
+        """
+        Get prescription details for an order.
+        """
+        order = self.get_object()
+        user = request.user
+
+        # Check permission: order owner, admin, or vendor
+        if not (user == order.user or getattr(user, 'role', None) == 'admin' or hasattr(user, 'vendor_profile')):
+            return Response(
+                {"error": "You don't have permission to view this order's prescription."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Check if prescription exists
+        if not hasattr(order, 'prescription'):
+            return Response(
+                {"error": "No prescription found for this order."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        prescription = order.prescription
+        serializer = PrescriptionDetailSerializer(prescription)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary='Delete Prescription',
+        description=(
+            'Delete a prescription (Admin only).\n\n'
+            'Only admins can delete prescriptions.'
+        ),
+        responses={
+            200: OpenApiResponse(description='Prescription deleted successfully.'),
+            403: OpenApiResponse(description='Permission denied.'),
+            404: OpenApiResponse(description='Order or prescription not found.'),
+        },
+        tags=['Prescriptions']
+    )
+    @action(
+        detail=True,
+        methods=['delete'],
+        url_path='prescription',
+        permission_classes=[IsAuthenticated]
+    )
+    def delete_prescription(self, request, pk=None):
+        """
+        Delete a prescription (admin only).
+        """
+        order = self.get_object()
+        user = request.user
+
+        # Only admin can delete
+        if getattr(user, 'role', None) != 'admin':
+            return Response(
+                {"error": "Only admins can delete prescriptions."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # Check if prescription exists
+        if not hasattr(order, 'prescription'):
+            return Response(
+                {"error": "No prescription found for this order."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        prescription = order.prescription
+        prescription.delete()
+
+        return Response(
+            {"message": "Prescription deleted successfully."},
+            status=status.HTTP_200_OK
+        )
 
 
 class VendorOrderViewSet(TenantViewMixin, viewsets.ReadOnlyModelViewSet):
@@ -646,7 +986,9 @@ class VendorOrderViewSet(TenantViewMixin, viewsets.ReadOnlyModelViewSet):
     ).prefetch_related(
         "items",
         "items__product",
-        "items__warehouse"
+        "items__warehouse",
+        "prescription",  # Add prescription relation
+        "prescription__reviewed_by",
     )
 
     def get_queryset(self):
@@ -727,3 +1069,81 @@ class InvoiceDownloadAPIView(APIView):
             as_attachment=True,
             filename=f"{invoice.invoice_number}.pdf"
         )
+
+
+# ==================== ADMIN VIEWS FOR PRESCRIPTIONS ====================
+
+from rest_framework import generics
+from .models import OrderPrescription
+from .serializers import PrescriptionDetailSerializer
+
+
+class AdminPrescriptionListView(generics.ListAPIView):
+    """
+    Admin view to list all prescriptions with filtering options.
+    """
+    permission_classes = [IsAdminRole]
+    serializer_class = PrescriptionDetailSerializer
+    queryset = OrderPrescription.objects.select_related(
+        'order',
+        'order__user',
+        'reviewed_by'
+    ).order_by('-uploaded_at')
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        
+        # Filter by status
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        
+        # Filter by date range
+        from_date = self.request.query_params.get('from_date')
+        if from_date:
+            queryset = queryset.filter(uploaded_at__gte=from_date)
+        
+        to_date = self.request.query_params.get('to_date')
+        if to_date:
+            queryset = queryset.filter(uploaded_at__lte=to_date)
+        
+        # Filter by tenant
+        tenant = self.request.tenant
+        if tenant:
+            queryset = queryset.filter(order__tenant=tenant)
+        
+        return queryset
+
+
+class AdminPrescriptionReviewView(generics.UpdateAPIView):
+    """
+    Admin view to review a prescription.
+    """
+    permission_classes = [IsAdminRole]
+    serializer_class = PrescriptionReviewSerializer
+    queryset = OrderPrescription.objects.all()
+
+    def update(self, request, *args, **kwargs):
+        prescription = self.get_object()
+        
+        if prescription.status != OrderPrescription.Status.PENDING:
+            return Response(
+                {"error": f"Prescription already {prescription.status}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        serializer = self.get_serializer(data=request.data)
+        if serializer.is_valid():
+            status_value = serializer.validated_data['status']
+            
+            if status_value == 'approved':
+                prescription.approve(request.user)
+            else:
+                prescription.reject(request.user)
+            
+            return Response({
+                "message": f"Prescription {status_value} successfully",
+                "prescription": PrescriptionDetailSerializer(prescription).data
+            })
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

@@ -20,6 +20,7 @@ class ProductReadSerializer(serializers.ModelSerializer):
             'image',  # it will return full Cloudinary URL
             'created_at',
             'updated_at',
+            'requires_prescription',
         ]
     
     def get_image(self, obj):
