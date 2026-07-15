@@ -51,6 +51,8 @@ CSRF_TRUSTED_ORIGINS = [
     "https://*.up.railway.app",
 ]
 
+
+
 # CORS Settings (Updated)
 # Allow all origins in development, restrict in production
 CORS_ALLOW_ALL_ORIGINS = DEBUG  # Only allow all in debug mode
@@ -230,6 +232,9 @@ if DATABASE_URL:
             DATABASE_URL,
             conn_max_age=0,   # Neon serverless: don't reuse connections across requests
             ssl_require=True, # Neon requires SSL — already in URL but this is a safety net
+            disable_server_side_cursors=True,
+            
+
             
         )
     }
