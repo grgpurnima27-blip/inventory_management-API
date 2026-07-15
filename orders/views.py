@@ -3,6 +3,7 @@ from urllib import response
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 
 from django.db import transaction
+from notifications.utils import send_notification
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 from django.shortcuts import get_object_or_404
@@ -351,6 +352,11 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
 
             InvoiceService.create_invoice(order)
 
+            send_notification(
+                order=order,
+                notification_type="order_placed",
+            )
+
             created_orders.append(order)
 
         # Serialize response with prescription fields
@@ -372,6 +378,7 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             )
 
         order = self.get_object()
+        old_status = order.status  # Store old status before changes
         new_status = request.data.get('status')
         new_payment_status = request.data.get('payment_status')
 
@@ -412,6 +419,23 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
             order.payment_status = new_payment_status
 
         order.save()
+
+        # Send notification if status changed
+        if new_status and new_status != old_status:
+            notification_map = {
+                Order.STATUS_PROCESSING: "order_processing",
+                Order.STATUS_SHIPPED: "order_shipped",
+                Order.STATUS_COMPLETED: "order_completed",
+                Order.STATUS_CANCELLED: "order_cancelled",
+            }
+
+            notification_type = notification_map.get(new_status)
+
+            if notification_type:
+                send_notification(
+                    order=order,
+                    notification_type=notification_type,
+                )
 
         return Response(
             OrderAdminSerializer(order).data,
@@ -479,6 +503,12 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
         order.status = Order.STATUS_CANCELLED
         order.cancelled_at = timezone.now()
         order.save()
+
+        # Send cancellation notification
+        send_notification(
+            order=order,
+            notification_type="order_cancelled",
+        )
 
         return Response(
             {'message': 'Order cancelled successfully. Inventory restored.'},
@@ -621,15 +651,26 @@ class OrderViewSet(TenantViewMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Store old status before any changes
+        old_status = order.status
+
         order.payment_status = Order.PAYMENT_STATUS_PAID
         order.payment_transaction_id = transaction_id
         order.paid_at = timezone.now()
 
+        # Auto-transition from pending to processing on payment confirmation
         if order.status == Order.STATUS_PENDING:
             order.status = Order.STATUS_PROCESSING
             order.processed_at = timezone.now()
 
         order.save()
+
+        # Send notification only if status changed to processing
+        if old_status != order.status and order.status == Order.STATUS_PROCESSING:
+            send_notification(
+                order=order,
+                notification_type="order_processing",
+            )
 
         payment_label = 'eSewa' if order.payment_method == Order.PAYMENT_METHOD_ESEWA else 'Khalti'
 
@@ -1007,14 +1048,24 @@ class VendorOrderViewSet(TenantViewMixin, viewsets.ReadOnlyModelViewSet):
 
         order.status = Order.STATUS_PROCESSING
         order.processed_at = timezone.now()
-        order.save()
+        order.save(update_fields=[
+            "status",
+            "processed_at",
+            "updated_at",
+        ])
 
         InvoiceService.create_invoice(order)
+
+        # Send processing notification
+        send_notification(
+            order=order,
+            notification_type="order_processing",
+        )
 
         return Response({
             "message": "Order moved to processing.",
             "order_id": order.id,
-            "status": order.status
+            "status": order.status,
         })
 
     @action(detail=True, methods=["post"])
@@ -1030,6 +1081,12 @@ class VendorOrderViewSet(TenantViewMixin, viewsets.ReadOnlyModelViewSet):
         order.status = Order.STATUS_SHIPPED
         order.shipped_at = timezone.now()
         order.save()
+
+        # Send shipped notification
+        send_notification(
+            order=order,
+            notification_type="order_shipped",
+        )
 
         return Response({
             "message": "Order shipped.",
@@ -1051,8 +1108,55 @@ class VendorOrderViewSet(TenantViewMixin, viewsets.ReadOnlyModelViewSet):
         order.completed_at = timezone.now()
         order.save()
 
+        # Send completed notification
+        send_notification(
+            order=order,
+            notification_type="order_completed",
+        )
+
         return Response({
             "message": "Order completed.",
+            "order_id": order.id,
+            "status": order.status
+        })
+
+    @action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        order = self.get_object()
+
+        if order.status == Order.STATUS_CANCELLED:
+            return Response(
+                {"error": "Order is already cancelled."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if order.status in [Order.STATUS_SHIPPED, Order.STATUS_COMPLETED]:
+            return Response(
+                {"error": f"Cannot cancel order with status: {order.status}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Restore inventory
+        for item in order.items.all():
+            inventory = Inventory.objects.select_for_update().get(
+                product=item.product,
+                warehouse=item.warehouse
+            )
+            inventory.quantity += item.quantity
+            inventory.save()
+
+        order.status = Order.STATUS_CANCELLED
+        order.cancelled_at = timezone.now()
+        order.save()
+
+        # Send cancellation notification
+        send_notification(
+            order=order,
+            notification_type="order_cancelled",
+        )
+
+        return Response({
+            "message": "Order cancelled successfully.",
             "order_id": order.id,
             "status": order.status
         })
