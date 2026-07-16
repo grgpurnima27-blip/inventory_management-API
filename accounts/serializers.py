@@ -11,14 +11,26 @@ from .models import Profile
 User = get_user_model()
 
 
-# ADD THIS USER SERIALIZER
 class UserSerializer(serializers.ModelSerializer):
     """Serializer for User model - used for MeView and user responses"""
     
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'role', 'date_joined', 'last_login']
-        read_only_fields = ['id', 'date_joined', 'last_login']
+        fields = [
+            'id', 
+            'username', 
+            'email', 
+            'role', 
+            'is_email_verified',
+            'date_joined', 
+            'last_login'
+        ]
+        read_only_fields = [
+            'id', 
+            'is_email_verified',
+            'date_joined', 
+            'last_login'
+        ]
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -40,20 +52,21 @@ class RegisterSerializer(serializers.ModelSerializer):
             )
         return value
 
-
-
     def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
-            raise serializers.ValidationError('Email already exists.')
-        return value
+        email = value.strip().lower()
+        if User.objects.filter(email__iexact=email).exists():
+            raise serializers.ValidationError(
+                'Email already exists.'
+            )
+        return email
 
     def create(self, validated_data):
         user = User.objects.create_user(
             username=validated_data['username'],
-            email=validated_data['email'],
+            email=validated_data['email'].strip().lower(),
             password=validated_data['password'],
-            role='customer'
-            ## is_email_verified=False
+            role='customer',
+            is_email_verified=False,
         )
         Profile.objects.create(user=user)
         return user
@@ -73,7 +86,12 @@ class LoginSerializer(serializers.Serializer):
             raise serializers.ValidationError('Invalid username or password.')
 
         if not user.is_email_verified:
-            raise serializers.ValidationError('Email is not verified.')
+            raise serializers.ValidationError({
+                'email': (
+                    "Please verify your email address before logging in. "
+                    "Check your inbox for the verification link."
+                )
+            })
 
         refresh = RefreshToken.for_user(user)
         response = {
@@ -84,6 +102,7 @@ class LoginSerializer(serializers.Serializer):
                 'username': user.username,
                 'email': user.email,
                 'role': user.role,
+                'is_email_verified': user.is_email_verified,
             }
         }
 
@@ -139,7 +158,12 @@ class AdminLoginSerializer(serializers.Serializer):
         if user.role != 'admin':
             raise serializers.ValidationError('Admin access only.')
         if not user.is_email_verified:
-            raise serializers.ValidationError('Email is not verified.')
+            raise serializers.ValidationError({
+                'email': (
+                    "Please verify your email address before logging in. "
+                    "Check your inbox for the verification link."
+                )
+            })
 
         refresh = RefreshToken.for_user(user)
         response = {
@@ -150,6 +174,7 @@ class AdminLoginSerializer(serializers.Serializer):
                 'username': user.username,
                 'email': user.email,
                 'role': user.role,
+                'is_email_verified': user.is_email_verified,
             }
         }
 
@@ -280,9 +305,10 @@ class VendorRegisterSerializer(serializers.Serializer):
         return value
 
     def validate_email(self, value):
-        if User.objects.filter(email=value).exists():
+        email = value.strip().lower()
+        if User.objects.filter(email__iexact=email).exists():
             raise serializers.ValidationError('An account with this email already exists.')
-        return value
+        return email
 
     def validate_store_slug(self, value):
         from tenants.models import Tenant
@@ -301,14 +327,14 @@ class VendorRegisterSerializer(serializers.Serializer):
         from tenants.models import Tenant
 
         with transaction.atomic():
+            # Create user as unverified
             user = User.objects.create_user(
                 username=validated_data['username'],
-                email=validated_data['email'],
+                email=validated_data['email'].strip().lower(),
                 password=validated_data['password'],
                 role='admin',
+                is_email_verified=False,
             )
-            user.is_email_verified = True
-            user.save()
             Profile.objects.create(user=user)
 
             tenant = Tenant.objects.create(
@@ -336,7 +362,12 @@ class VendorLoginSerializer(serializers.Serializer):
         if not user:
             raise serializers.ValidationError({'username': 'Invalid username or password.'})
         if not user.is_email_verified:
-            raise serializers.ValidationError({'username': 'Email is not verified.'})
+            raise serializers.ValidationError({
+                'email': (
+                    "Please verify your email address before logging in. "
+                    "Check your inbox for the verification link."
+                )
+            })
         if user.role != 'admin':
             raise serializers.ValidationError({'username': 'This account does not have vendor admin access.'})
 
@@ -363,6 +394,7 @@ class VendorLoginSerializer(serializers.Serializer):
                 'id':       user.id,
                 'username': user.username,
                 'email':    user.email,
+                'is_email_verified': user.is_email_verified,
             },
             'store': {
                 'id':         tenant.id,
@@ -394,7 +426,12 @@ class EmployeeLoginSerializer(serializers.Serializer):
         if not user:
             raise serializers.ValidationError({'username': 'Invalid username or password.'})
         if not user.is_email_verified:
-            raise serializers.ValidationError({'username': 'Email is not verified.'})
+            raise serializers.ValidationError({
+                'email': (
+                    "Please verify your email address before logging in. "
+                    "Check your inbox for the verification link."
+                )
+            })
 
         from tenants.models import Tenant, TenantMember
 
@@ -430,6 +467,7 @@ class EmployeeLoginSerializer(serializers.Serializer):
                 'id':       user.id,
                 'username': user.username,
                 'email':    user.email,
+                'is_email_verified': user.is_email_verified,
             },
             'store': {
                 'id':         tenant.id,

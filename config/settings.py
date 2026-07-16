@@ -143,7 +143,8 @@ else:
 # Frontend/Backend URL for email links
 FRONTEND_URL = os.getenv(
     'FRONTEND_URL',
-    'https://inventorymanagement-api-production.up.railway.app'
+    # 'https://inventorymanagement-api-production.up.railway.app'
+    "http://127.0.0.1:8000",
 )
 
 INSTALLED_APPS = [
