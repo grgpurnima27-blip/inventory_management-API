@@ -84,26 +84,45 @@ class RegisterView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        token = generate_token(
+        user.id,
+        "email_verification",
+        )
 
-        # Auto-verify email (no email sending)
-        user.is_email_verified = True
-        user.save()
-        
-        # Generate tokens for immediate login
-        refresh = RefreshToken.for_user(user)
-        
+        send_verification_email(
+            user,
+            token,
+        )
+
         return Response(
             {
-                'message': 'Registration successful!',
-                'user_id': user.id,
-                'username': user.username,
-                'tokens': {
-                    'refresh': str(refresh),
-                    'access': str(refresh.access_token),
-                }
+                "message": (
+                    "Registration successful. "
+                    "Please check your email to verify your account."
+                ),
+                "email": user.email,
             },
-            status=status.HTTP_201_CREATED
+            status=status.HTTP_201_CREATED,
         )
+        # Auto-verify email (no email sending)
+        # user.is_email_verified = True
+        # user.save()
+        
+        # # Generate tokens for immediate login
+        # refresh = RefreshToken.for_user(user)
+        
+        # return Response(
+        #     {
+        #         'message': 'Registration successful!',
+        #         'user_id': user.id,
+        #         'username': user.username,
+        #         'tokens': {
+        #             'refresh': str(refresh),
+        #             'access': str(refresh.access_token),
+        #         }
+        #     },
+        #     status=status.HTTP_201_CREATED
+        # )
 
 
 @extend_schema(tags=['auth'], request=LoginSerializer)
@@ -347,4 +366,63 @@ class ResetPasswordView(APIView):
                 'message': 'Password reset functionality is currently disabled. Please contact admin for assistance.',
             },
             status=status.HTTP_200_OK
+        )
+    
+@extend_schema(
+    tags=['auth'],
+    summary='Verify Email',
+    description='Verify a newly registered user email using the token sent by email.',
+    responses={
+        200: OpenApiResponse(description='Email verified successfully.'),
+        400: OpenApiResponse(description='Invalid or expired verification token.'),
+        404: OpenApiResponse(description='User not found.'),
+    },
+)
+class VerifyEmailView(APIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, token):
+        user_id = verify_token(
+            token,
+            'email_verification',
+        )
+
+        if not user_id:
+            return Response(
+                {
+                    'message': (
+                        'Verification link is invalid or has expired.'
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            user = User.objects.get(id=user_id)
+        except User.DoesNotExist:
+            return Response(
+                {
+                    'message': 'User not found.'
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if user.is_email_verified:
+            return Response(
+                {
+                    'message': 'Email is already verified.'
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        user.is_email_verified = True
+        user.save(update_fields=['is_email_verified'])
+
+        return Response(
+            {
+                'message': (
+                    'Email verified successfully. You can now log in.'
+                )
+            },
+            status=status.HTTP_200_OK,
         )
