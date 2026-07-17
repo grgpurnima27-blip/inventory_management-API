@@ -38,6 +38,8 @@ ALLOWED_HOSTS = [
     ".up.railway.app",  ### Add Railway default domain
     "192.168.18.227",
     "192.168.18.220",
+    "192.168.18.224",
+    "192.168.18.221",
 ]
 
 railway_domain = os.getenv("RAILWAY_PUBLIC_DOMAIN")
@@ -48,6 +50,8 @@ CSRF_TRUSTED_ORIGINS = [
     "https://*.railway.app",
     "https://*.up.railway.app",
 ]
+
+
 
 # CORS Settings (Updated)
 # Allow all origins in development, restrict in production
@@ -139,7 +143,8 @@ else:
 # Frontend/Backend URL for email links
 FRONTEND_URL = os.getenv(
     'FRONTEND_URL',
-    'https://inventorymanagement-api-production.up.railway.app'
+    # 'https://inventorymanagement-api-production.up.railway.app'
+    "http://127.0.0.1:8000",
 )
 
 INSTALLED_APPS = [
@@ -228,6 +233,9 @@ if DATABASE_URL:
             DATABASE_URL,
             conn_max_age=0,   # Neon serverless: don't reuse connections across requests
             ssl_require=True, # Neon requires SSL — already in URL but this is a safety net
+            disable_server_side_cursors=True,
+            
+
             
         )
     }

@@ -10,8 +10,8 @@ class WarehouseAdmin(admin.ModelAdmin):
         'id',
         'name',
         'location',
-        "latitude",
-        'longitude',
+        # "latitude",
+        # 'longitude',
         'created_at',
         "updated_at",
     ]
